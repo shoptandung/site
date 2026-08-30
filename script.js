@@ -3,6 +3,7 @@
 //  GIỎ HÀNG + MUA NGAY + LINK FILE TRONG LỊCH SỬ
 //  MUA LẶP LẠI KHÔNG GIỚI HẠN + ADMIN THÊM LINK TẢI
 //  RESPONSIVE + ĐỒNG BỘ DỮ LIỆU + CHỐNG PHÓNG TO
+//  ĐÃ FIX LỖI DUYỆT TIỀN + ĐỒNG BỘ ĐA THIẾT BỊ
 // ====================================================
 
 // ===== CHỐNG PHÓNG TO MÀN HÌNH =====
@@ -37,6 +38,12 @@ const DEFAULT_BANK_CONFIG = {
     Momo: { name: 'Ví Momo', account: '0388888888', accountName: 'SHOP TANDUNG FF', bankId: 'MOMO', qrImage: '' },
     MBBank: { name: 'MB Bank', account: '0388888888', accountName: 'SHOP TANDUNG FF', bankId: '970422', qrImage: '' }
 };
+
+// ====================================================
+//  API CONFIG - THAY ĐỔI KHI CÓ BACKEND
+// ====================================================
+const API_BASE_URL = 'http://localhost:3000/api'; // Backend local
+// const API_BASE_URL = 'https://your-domain.com/api'; // Khi deploy
 
 // ====================================================
 //  STORAGE KEYS
@@ -179,81 +186,191 @@ function saveGlobalFiles(files) {
 let FILE_DATA = getGlobalFiles();
 
 // ====================================================
-//  ĐỒNG BỘ DỮ LIỆU GIỮA CÁC TAB/WINDOW
+//  ĐỒNG BỘ DỮ LIỆU GIỮA CÁC TAB/WINDOW & THIẾT BỊ
 // ====================================================
+
+// ---- BROADCAST CHANNEL ----
+let syncChannel = null;
+try {
+    syncChannel = new BroadcastChannel('shop_sync');
+    syncChannel.onmessage = function(e) {
+        if (e.data && e.data.type === 'sync') {
+            console.log('🔄 Đồng bộ từ tab khác:', e.data);
+            // Reload dữ liệu
+            if (APP.isAdmin) {
+                setTimeout(() => {
+                    renderDepositRequests();
+                    renderAdminDashboard();
+                    showToast('📢 Có yêu cầu nạp mới từ thiết bị khác!', 'fas fa-bell', 'warning');
+                }, 300);
+            }
+            if (APP.isLoggedIn) {
+                const updatedUser = Auth.getUserById(APP.currentUser.id);
+                if (updatedUser) {
+                    const oldBalance = APP.balance;
+                    APP.balance = updatedUser.balance || 0;
+                    APP.history = updatedUser.history || [];
+                    APP.totalDeposit = updatedUser.totalDeposit || 0;
+                    APP.vipLevel = updatedUser.vipLevel || 0;
+                    APP.vipPoints = updatedUser.vipPoints || 0;
+                    if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
+                    if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
+                    if (oldBalance !== APP.balance) {
+                        showToast(`💰 Số dư đã cập nhật: ${APP.balance.toLocaleString()}đ`, 'fas fa-wallet', 'success');
+                        triggerConfetti();
+                    }
+                    renderHistory();
+                    updateVIPUI(updatedUser);
+                }
+            }
+            // Reload file, cart, etc
+            FILE_DATA = getGlobalFiles();
+            APP.files = [...FILE_DATA];
+            APP.filteredFiles = [...FILE_DATA];
+            renderFiles();
+            renderFileGrid();
+            if (APP.isAdmin) renderAdminFiles();
+            updateRealStats();
+            updateCartUI();
+            renderCart();
+            renderReviews();
+            renderEvents();
+            renderMissions();
+        }
+    };
+} catch(e) {
+    console.log('Broadcast Channel không hỗ trợ');
+}
+
+function broadcastSync() {
+    try {
+        if (syncChannel) {
+            syncChannel.postMessage({ type: 'sync', timestamp: Date.now() });
+        }
+        localStorage.setItem('ff_sync_trigger', Date.now().toString());
+    } catch(e) {}
+}
+
+// ---- STORAGE EVENT - LẮNG NGHE THAY ĐỔI TỪ TAB KHÁC ----
 window.addEventListener('storage', function(e) {
-    // Tự động cập nhật khi có thay đổi từ admin
+    if (e.key === STORAGE_KEY_USERS) {
+        console.log('📢 Phát hiện thay đổi user từ tab khác');
+        if (APP.isAdmin) {
+            setTimeout(() => {
+                renderDepositRequests();
+                renderAdminDashboard();
+                showToast('📢 Có yêu cầu nạp mới!', 'fas fa-bell', 'warning');
+            }, 300);
+        }
+        if (APP.isLoggedIn) {
+            const updatedUser = Auth.getUserById(APP.currentUser.id);
+            if (updatedUser) {
+                const oldBalance = APP.balance;
+                APP.balance = updatedUser.balance || 0;
+                APP.history = updatedUser.history || [];
+                APP.totalDeposit = updatedUser.totalDeposit || 0;
+                APP.vipLevel = updatedUser.vipLevel || 0;
+                APP.vipPoints = updatedUser.vipPoints || 0;
+                if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
+                if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
+                if (oldBalance !== APP.balance) {
+                    showToast(`💰 Số dư đã cập nhật: ${APP.balance.toLocaleString()}đ`, 'fas fa-wallet', 'success');
+                    triggerConfetti();
+                }
+                renderHistory();
+                updateVIPUI(updatedUser);
+            }
+        }
+    }
     if (e.key === STORAGE_KEY_FILES) {
         FILE_DATA = getGlobalFiles();
         APP.files = [...FILE_DATA];
         APP.filteredFiles = [...FILE_DATA];
-        if (typeof renderFiles === 'function') renderFiles();
-        if (typeof renderFileGrid === 'function') renderFileGrid();
-        if (typeof renderAdminFiles === 'function') renderAdminFiles();
-        if (typeof updateRealStats === 'function') updateRealStats();
+        renderFiles();
+        renderFileGrid();
+        if (APP.isAdmin) renderAdminFiles();
+        updateRealStats();
         showToast('📦 Kho file đã được cập nhật!', 'fas fa-sync', 'success');
     }
-    if (e.key === STORAGE_KEY_USERS || e.key === STORAGE_KEY_CURRENT_USER) {
-        if (Auth.isLoggedIn()) {
-            const current = Auth.getCurrentUser();
-            if (current) {
-                APP.currentUser = current;
-                APP.balance = current.balance || 0;
-                APP.purchasedFiles = current.purchasedFiles || [];
-                if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
-                if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
-                if (typeof renderHistory === 'function') renderHistory();
-                if (typeof updateVIPUI === 'function') updateVIPUI(current);
-                if (current.role === 'admin' && typeof renderAdminDashboard === 'function') {
-                    renderAdminDashboard();
-                }
-            }
-        }
-    }
     if (e.key === STORAGE_KEY_CART) {
-        if (typeof updateCartUI === 'function') updateCartUI();
-        if (typeof renderCart === 'function') renderCart();
+        updateCartUI();
+        renderCart();
     }
     if (e.key === STORAGE_KEY_GIFTCODES) {
         if (typeof renderAdminGiftcodes === 'function') renderAdminGiftcodes();
     }
     if (e.key === STORAGE_KEY_EVENTS) {
-        if (typeof renderEvents === 'function') renderEvents();
-        if (typeof renderAdminEvents === 'function') renderAdminEvents();
+        renderEvents();
+        if (APP.isAdmin) renderAdminEvents();
     }
-    if (e.key === STORAGE_KEY_SPIN_WEIGHTS) {
-        if (typeof renderAdminSpinWeights === 'function') renderAdminSpinWeights();
+    if (e.key === STORAGE_KEY_BANK) {
+        APP.bankConfig = getBankConfig();
+        if (APP.isAdmin) renderAdminQRConfig();
     }
     if (e.key === STORAGE_KEY_SUPPORT) {
         if (typeof updateSupportUI === 'function') updateSupportUI(getSupportLinks());
     }
-    if (e.key === STORAGE_KEY_BANK) {
-        APP.bankConfig = getBankConfig();
-        if (typeof renderAdminQRConfig === 'function') renderAdminQRConfig();
+    if (e.key === STORAGE_KEY_SPIN_WEIGHTS) {
+        if (APP.isAdmin && typeof renderAdminSpinWeights === 'function') renderAdminSpinWeights();
     }
     if (e.key === 'ff_sync_trigger') {
-        // Trigger đồng bộ toàn bộ
-        FILE_DATA = getGlobalFiles();
-        APP.files = [...FILE_DATA];
-        APP.filteredFiles = [...FILE_DATA];
-        if (typeof renderFiles === 'function') renderFiles();
-        if (typeof renderFileGrid === 'function') renderFileGrid();
-        if (APP.isAdmin && typeof renderAdminFiles === 'function') renderAdminFiles();
-        if (typeof updateRealStats === 'function') updateRealStats();
+        console.log('🔄 Sync trigger từ tab khác');
+        if (APP.isAdmin) {
+            setTimeout(() => {
+                renderDepositRequests();
+                renderAdminDashboard();
+            }, 200);
+        }
+        if (APP.isLoggedIn) {
+            const updatedUser = Auth.getUserById(APP.currentUser.id);
+            if (updatedUser && updatedUser.balance !== APP.balance) {
+                APP.balance = updatedUser.balance;
+                APP.history = updatedUser.history;
+                APP.totalDeposit = updatedUser.totalDeposit;
+                APP.vipLevel = updatedUser.vipLevel;
+                APP.vipPoints = updatedUser.vipPoints;
+                if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
+                if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
+                renderHistory();
+                updateVIPUI(updatedUser);
+                showToast(`💰 Số dư đã được cập nhật!`, 'fas fa-wallet', 'success');
+            }
+        }
     }
 });
 
-// ===== HÀM ĐỒNG BỘ DỮ LIỆU LÊN SERVER (TÙY CHỌN) =====
-function syncDataToServer(dataType, data) {
-    // Nếu mày có backend, thay thế bằng fetch/axios
-    console.log(`[SYNC] ${dataType}:`, data);
-    // Ví dụ:
-    // fetch('/api/sync', {
-    //     method: 'POST',
-    //     headers: { 'Content-Type': 'application/json' },
-    //     body: JSON.stringify({ type: dataType, data: data, timestamp: Date.now() })
-    // }).catch(e => console.error('Sync error:', e));
+// ---- POLLING - KIỂM TRA DỮ LIỆU MỚI ĐỊNH KỲ ----
+let lastPollCheck = 0;
+
+function pollForUpdates() {
+    const now = Date.now();
+    if (now - lastPollCheck < 3000) return;
+    lastPollCheck = now;
+    
+    const trigger = localStorage.getItem('ff_sync_trigger');
+    if (trigger && parseInt(trigger) > now - 5000) {
+        if (APP.isAdmin) {
+            renderDepositRequests();
+            renderAdminDashboard();
+        }
+        if (APP.isLoggedIn) {
+            const updatedUser = Auth.getUserById(APP.currentUser.id);
+            if (updatedUser && updatedUser.balance !== APP.balance) {
+                APP.balance = updatedUser.balance;
+                APP.history = updatedUser.history;
+                APP.totalDeposit = updatedUser.totalDeposit;
+                APP.vipLevel = updatedUser.vipLevel;
+                APP.vipPoints = updatedUser.vipPoints;
+                if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
+                if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
+                renderHistory();
+                updateVIPUI(updatedUser);
+                showToast(`💰 Số dư đã được cập nhật: ${APP.balance.toLocaleString()}đ`, 'fas fa-wallet', 'success');
+            }
+        }
+    }
 }
+setInterval(pollForUpdates, 3000);
 
 // ====================================================
 //  SPIN PRIZES
@@ -671,6 +788,7 @@ const Auth = {
             current.history = user.history;
             this.saveCurrentUser(current);
         }
+        broadcastSync();
         return user;
     },
     
@@ -757,6 +875,7 @@ const Auth = {
                 this.saveCurrentUser(current);
             }
         }
+        broadcastSync();
         return user;
     },
     
@@ -767,10 +886,12 @@ const Auth = {
         return vipInfo.discount;
     },
     
+    // ===== SỬA LẠI CREATE DEPOSIT REQUEST - GỬI TÍN HIỆU ĐỒNG BỘ =====
     createDepositRequest(userId, amount, method) {
         const users = this.getUsers();
         const user = users.find(u => u.id === userId);
         if (!user) return null;
+        
         user.depositRequests = user.depositRequests || [];
         const request = {
             id: 'DEP-' + Date.now().toString(36).toUpperCase(),
@@ -783,6 +904,20 @@ const Auth = {
         };
         user.depositRequests.push(request);
         this.saveUsers(users);
+        
+        // GỬI TÍN HIỆU ĐỒNG BỘ
+        broadcastSync();
+        syncDataToServer('users', users);
+        
+        // Thông báo cho admin nếu đang đăng nhập
+        if (APP.isAdmin) {
+            setTimeout(() => {
+                renderDepositRequests();
+                renderAdminDashboard();
+                showToast(`📢 Yêu cầu nạp ${amount.toLocaleString()}đ từ ${user.username}!`, 'fas fa-bell', 'warning');
+            }, 300);
+        }
+        
         return request;
     },
     
@@ -800,39 +935,65 @@ const Auth = {
         return all;
     },
     
+    // ===== SỬA LẠI APPROVE DEPOSIT - FIX LỖI KHÔNG NHẬN TIỀN =====
     approveDeposit(requestId) {
         const users = this.getUsers();
         let foundUser = null, foundRequest = null;
-        for (const user of users) {
+        let userIndex = -1;
+        
+        for (let i = 0; i < users.length; i++) {
+            const user = users[i];
             if (user.depositRequests) {
                 const idx = user.depositRequests.findIndex(r => r.id === requestId);
                 if (idx !== -1) {
                     foundUser = user;
                     foundRequest = user.depositRequests[idx];
-                    foundRequest.status = 'approved';
-                    foundRequest.updatedAt = new Date().toISOString();
-                    user.balance += foundRequest.amount;
-                    user.totalDeposit = (user.totalDeposit || 0) + foundRequest.amount;
-                    const newLevel = this.calculateVipLevel(user.totalDeposit);
-                    if (newLevel > (user.vipLevel || 0)) {
-                        const bonusPoints = (newLevel - (user.vipLevel || 0)) * 1000;
-                        user.vipPoints = (user.vipPoints || 0) + bonusPoints;
-                        user.vipLevel = newLevel;
-                    }
-                    user.history = user.history || [];
-                    user.history.unshift({
-                        id: '#DEP-' + Date.now().toString(36).toUpperCase(),
-                        desc: `Nạp tiền qua ${foundRequest.method} (đã duyệt)`,
-                        amount: `+${foundRequest.amount.toLocaleString()}đ`,
-                        status: 'Thành công',
-                        time: new Date().toLocaleString('vi-VN')
-                    });
+                    userIndex = i;
                     break;
                 }
             }
         }
-        if (!foundRequest) return null;
+        
+        if (!foundRequest) {
+            showToast('❌ Không tìm thấy yêu cầu!', 'fas fa-times-circle', 'error');
+            return null;
+        }
+        
+        // Cập nhật trạng thái
+        foundRequest.status = 'approved';
+        foundRequest.updatedAt = new Date().toISOString();
+        
+        // CỘNG TIỀN VÀO BALANCE
+        const oldBalance = foundUser.balance || 0;
+        foundUser.balance = oldBalance + foundRequest.amount;
+        foundUser.totalDeposit = (foundUser.totalDeposit || 0) + foundRequest.amount;
+        
+        // CẬP NHẬT VIP LEVEL
+        const newLevel = this.calculateVipLevel(foundUser.totalDeposit);
+        if (newLevel > (foundUser.vipLevel || 0)) {
+            const bonusPoints = (newLevel - (foundUser.vipLevel || 0)) * 1000;
+            foundUser.vipPoints = (foundUser.vipPoints || 0) + bonusPoints;
+            foundUser.vipLevel = newLevel;
+        }
+        
+        // THÊM VÀO LỊCH SỬ
+        foundUser.history = foundUser.history || [];
+        foundUser.history.unshift({
+            id: '#DEP-' + Date.now().toString(36).toUpperCase(),
+            desc: `Nạp tiền qua ${foundRequest.method} (đã duyệt)`,
+            amount: `+${foundRequest.amount.toLocaleString()}đ`,
+            status: 'Thành công',
+            time: new Date().toLocaleString('vi-VN')
+        });
+        
+        // LƯU LẠI
         this.saveUsers(users);
+        
+        // GỬI TÍN HIỆU ĐỒNG BỘ CHO TẤT CẢ THIẾT BỊ
+        broadcastSync();
+        syncDataToServer('users', users);
+        
+        // Cập nhật current user nếu đang đăng nhập
         const current = this.getCurrentUser();
         if (current && current.id === foundUser.id) {
             current.balance = foundUser.balance;
@@ -841,7 +1002,33 @@ const Auth = {
             current.vipLevel = foundUser.vipLevel;
             current.vipPoints = foundUser.vipPoints;
             this.saveCurrentUser(current);
+            
+            // Cập nhật APP state
+            APP.balance = current.balance;
+            APP.history = current.history;
+            APP.totalDeposit = current.totalDeposit;
+            APP.vipLevel = current.vipLevel;
+            APP.vipPoints = current.vipPoints;
+            if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
+            if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
+            renderHistory();
+            updateVIPUI(current);
         }
+        
+        // Cập nhật UI admin
+        if (typeof renderDepositRequests === 'function') {
+            setTimeout(renderDepositRequests, 200);
+        }
+        if (typeof renderAdminDashboard === 'function') {
+            setTimeout(renderAdminDashboard, 300);
+        }
+        if (typeof updateRealStats === 'function') {
+            setTimeout(updateRealStats, 400);
+        }
+        
+        showToast(`✅ Đã duyệt ${foundRequest.amount.toLocaleString()}đ cho ${foundUser.username}!`, 'fas fa-check-circle', 'success');
+        triggerConfetti();
+        
         return foundRequest;
     },
     
@@ -861,6 +1048,7 @@ const Auth = {
         }
         if (!foundRequest) return null;
         this.saveUsers(users);
+        broadcastSync();
         return foundRequest;
     },
     
@@ -1442,9 +1630,114 @@ const DOM = {
 };
 
 // ====================================================
-//  SECURITY - ANTI-DEBUG + ANTI-F12 + ANTI-DDOS (ĐÃ FIX IP BLOCK)
+//  HÀM ĐỒNG BỘ LÊN SERVER (KHI CÓ BACKEND)
 // ====================================================
+function syncDataToServer(dataType, data) {
+    console.log(`[SYNC] ${dataType}:`, data);
+    
+    // === UNCOMMENT KHI CÓ BACKEND ===
+    /*
+    fetch(`${API_BASE_URL}/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            type: dataType, 
+            data: data, 
+            timestamp: Date.now(),
+            userId: APP.currentUser?.id || 'anonymous'
+        })
+    })
+    .then(res => res.json())
+    .then(result => {
+        if (result.success) {
+            console.log(`✅ Đã đồng bộ ${dataType} lên server`);
+        }
+    })
+    .catch(err => console.error('Sync error:', err));
+    */
+}
 
+function fetchDataFromServer() {
+    console.log('[FETCH] Đang lấy dữ liệu từ server...');
+    // === UNCOMMENT KHI CÓ BACKEND ===
+    /*
+    fetch(`${API_BASE_URL}/sync`)
+        .then(res => res.json())
+        .then(result => {
+            if (!result.success || !result.data) return;
+            const data = result.data;
+            if (data.users) {
+                localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(data.users));
+                if (APP.isLoggedIn) {
+                    const updatedUser = Auth.getUserById(APP.currentUser.id);
+                    if (updatedUser) {
+                        APP.balance = updatedUser.balance || 0;
+                        APP.history = updatedUser.history || [];
+                        APP.totalDeposit = updatedUser.totalDeposit || 0;
+                        APP.vipLevel = updatedUser.vipLevel || 0;
+                        APP.vipPoints = updatedUser.vipPoints || 0;
+                        if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
+                        if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
+                        renderHistory();
+                        updateVIPUI(updatedUser);
+                    }
+                }
+                if (APP.isAdmin) {
+                    renderDepositRequests();
+                    renderAdminDashboard();
+                }
+            }
+            if (data.files) {
+                localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(data.files));
+                FILE_DATA = getGlobalFiles();
+                APP.files = [...FILE_DATA];
+                APP.filteredFiles = [...FILE_DATA];
+                renderFiles();
+                renderFileGrid();
+                if (APP.isAdmin) renderAdminFiles();
+                updateRealStats();
+            }
+            if (data.cart) {
+                localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(data.cart));
+                updateCartUI();
+                renderCart();
+            }
+            if (data.giftcodes) {
+                localStorage.setItem(STORAGE_KEY_GIFTCODES, JSON.stringify(data.giftcodes));
+                if (APP.isAdmin) renderAdminGiftcodes();
+            }
+            if (data.events) {
+                localStorage.setItem(STORAGE_KEY_EVENTS, JSON.stringify(data.events));
+                renderEvents();
+                if (APP.isAdmin) renderAdminEvents();
+            }
+            if (data.bank) {
+                localStorage.setItem(STORAGE_KEY_BANK, JSON.stringify(data.bank));
+                APP.bankConfig = getBankConfig();
+                if (APP.isAdmin) renderAdminQRConfig();
+            }
+            if (data.support) {
+                localStorage.setItem(STORAGE_KEY_SUPPORT, JSON.stringify(data.support));
+                updateSupportUI(getSupportLinks());
+            }
+            if (data.spinWeights) {
+                localStorage.setItem(STORAGE_KEY_SPIN_WEIGHTS, JSON.stringify(data.spinWeights));
+            }
+            showToast('🔄 Dữ liệu đã được đồng bộ từ server!', 'fas fa-sync', 'success');
+        })
+        .catch(err => console.error('Fetch error:', err));
+    */
+}
+
+// Gọi fetchDataFromServer định kỳ (30 giây)
+setInterval(fetchDataFromServer, 30000);
+
+// Gọi fetchDataFromServer khi load trang
+setTimeout(fetchDataFromServer, 2000);
+
+// ====================================================
+//  SECURITY - ANTI-DEBUG + ANTI-F12 + ANTI-DDOS
+// ====================================================
 function securityLog(message) {
     const logContainer = DOM.securityLog;
     if (!logContainer) return;
@@ -3125,26 +3418,49 @@ function renderDepositRequests() {
     if (APP.depositFilter === 'pending') filtered = requests.filter(r => r.status === 'pending');
     else if (APP.depositFilter === 'approved') filtered = requests.filter(r => r.status === 'approved');
     else if (APP.depositFilter === 'rejected') filtered = requests.filter(r => r.status === 'rejected');
+    
+    // Cập nhật badge
+    const pendingCount = requests.filter(r => r.status === 'pending').length;
+    if (DOM.pendingBadge) {
+        DOM.pendingBadge.textContent = pendingCount;
+        DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`;
+    }
+    
     if (filtered.length === 0) {
         container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);">
             <i class="fas fa-check-circle" style="font-size:32px;color:#00ff88;display:block;margin-bottom:12px;"></i>
-            Không có yêu cầu nào
+            ${APP.depositFilter === 'pending' ? 'Không có yêu cầu chờ duyệt' : 'Không có yêu cầu nào'}
         </div>`;
         return;
     }
     container.innerHTML = filtered.map(req => `
-        <div class="deposit-request-item">
+        <div class="deposit-request-item ${req.status === 'pending' ? 'pending-highlight' : ''}" 
+             style="${req.status === 'pending' ? 'border-left: 3px solid #ffaa00;' : ''}">
             <div class="req-info">
-                <div class="req-user">${req.username} <span class="req-email">(${req.userEmail || 'N/A'})</span> ${req.userVip > 0 ? `⭐ VIP ${req.userVip}` : ''}</div>
+                <div class="req-user">
+                    ${req.username} 
+                    <span class="req-email">(${req.userEmail || 'N/A'})</span> 
+                    ${req.userVip > 0 ? `⭐ VIP ${req.userVip}` : ''}
+                    ${req.status === 'pending' ? '<span style="color:#ffaa00;font-size:10px;">🟡 Mới</span>' : ''}
+                </div>
                 <div class="req-amount">${req.amount.toLocaleString()}đ</div>
-                <div class="req-time"><i class="fas fa-clock"></i> ${new Date(req.createdAt).toLocaleString('vi-VN')} | ${req.method}</div>
+                <div class="req-time">
+                    <i class="fas fa-clock"></i> ${new Date(req.createdAt).toLocaleString('vi-VN')} 
+                    | ${req.method}
+                </div>
             </div>
             <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-                <span class="req-status ${req.status}">${req.status === 'pending' ? '⏳ Chờ' : req.status === 'approved' ? '✅ Đã duyệt' : '❌ Từ chối'}</span>
+                <span class="req-status ${req.status}">
+                    ${req.status === 'pending' ? '⏳ Chờ duyệt' : req.status === 'approved' ? '✅ Đã duyệt' : '❌ Từ chối'}
+                </span>
                 ${req.status === 'pending' ? `
                     <div class="req-actions">
-                        <button class="btn-approve" onclick="approveDeposit('${req.id}')"><i class="fas fa-check"></i> Duyệt</button>
-                        <button class="btn-reject" onclick="rejectDeposit('${req.id}')"><i class="fas fa-times"></i> Từ chối</button>
+                        <button class="btn-approve" onclick="approveDeposit('${req.id}')">
+                            <i class="fas fa-check"></i> Duyệt
+                        </button>
+                        <button class="btn-reject" onclick="rejectDeposit('${req.id}')">
+                            <i class="fas fa-times"></i> Từ chối
+                        </button>
                     </div>
                 ` : ''}
                 ${req.status === 'rejected' && req.note ? `<span style="font-size:12px;color:#ff4d4d;">Lý do: ${req.note}</span>` : ''}
