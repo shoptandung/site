@@ -2,8 +2,21 @@
 //  SHOP TẤN DŨNG FF - OMEGA ENGINE v16.0
 //  GIỎ HÀNG + MUA NGAY + LINK FILE TRONG LỊCH SỬ
 //  MUA LẶP LẠI KHÔNG GIỚI HẠN + ADMIN THÊM LINK TẢI
-//  ĐÃ FIX LỖI
+//  RESPONSIVE + ĐỒNG BỘ DỮ LIỆU + CHỐNG PHÓNG TO
 // ====================================================
+
+// ===== CHỐNG PHÓNG TO MÀN HÌNH =====
+document.addEventListener('gesturestart', function(e) {
+    e.preventDefault();
+    return false;
+});
+
+document.addEventListener('touchmove', function(e) {
+    if (e.touches && e.touches.length > 1) {
+        e.preventDefault();
+        return false;
+    }
+}, { passive: false });
 
 // ---- ADMIN CREDENTIALS ----
 const ADMIN_USERNAME = 'admin';
@@ -160,19 +173,25 @@ function getGlobalFiles() {
 function saveGlobalFiles(files) {
     localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(files));
     try { localStorage.setItem('ff_sync_trigger', Date.now().toString()); } catch (e) {}
+    syncDataToServer('files', files);
 }
 
 let FILE_DATA = getGlobalFiles();
 
-// ---- LẮNG NGHE SỰ KIỆN ĐỒNG BỘ ----
+// ====================================================
+//  ĐỒNG BỘ DỮ LIỆU GIỮA CÁC TAB/WINDOW
+// ====================================================
 window.addEventListener('storage', function(e) {
+    // Tự động cập nhật khi có thay đổi từ admin
     if (e.key === STORAGE_KEY_FILES) {
         FILE_DATA = getGlobalFiles();
+        APP.files = [...FILE_DATA];
+        APP.filteredFiles = [...FILE_DATA];
         if (typeof renderFiles === 'function') renderFiles();
         if (typeof renderFileGrid === 'function') renderFileGrid();
         if (typeof renderAdminFiles === 'function') renderAdminFiles();
         if (typeof updateRealStats === 'function') updateRealStats();
-        showToast('📦 Dữ liệu file đã được cập nhật!', 'fas fa-sync', 'success');
+        showToast('📦 Kho file đã được cập nhật!', 'fas fa-sync', 'success');
     }
     if (e.key === STORAGE_KEY_USERS || e.key === STORAGE_KEY_CURRENT_USER) {
         if (Auth.isLoggedIn()) {
@@ -183,6 +202,11 @@ window.addEventListener('storage', function(e) {
                 APP.purchasedFiles = current.purchasedFiles || [];
                 if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
                 if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
+                if (typeof renderHistory === 'function') renderHistory();
+                if (typeof updateVIPUI === 'function') updateVIPUI(current);
+                if (current.role === 'admin' && typeof renderAdminDashboard === 'function') {
+                    renderAdminDashboard();
+                }
             }
         }
     }
@@ -190,7 +214,46 @@ window.addEventListener('storage', function(e) {
         if (typeof updateCartUI === 'function') updateCartUI();
         if (typeof renderCart === 'function') renderCart();
     }
+    if (e.key === STORAGE_KEY_GIFTCODES) {
+        if (typeof renderAdminGiftcodes === 'function') renderAdminGiftcodes();
+    }
+    if (e.key === STORAGE_KEY_EVENTS) {
+        if (typeof renderEvents === 'function') renderEvents();
+        if (typeof renderAdminEvents === 'function') renderAdminEvents();
+    }
+    if (e.key === STORAGE_KEY_SPIN_WEIGHTS) {
+        if (typeof renderAdminSpinWeights === 'function') renderAdminSpinWeights();
+    }
+    if (e.key === STORAGE_KEY_SUPPORT) {
+        if (typeof updateSupportUI === 'function') updateSupportUI(getSupportLinks());
+    }
+    if (e.key === STORAGE_KEY_BANK) {
+        APP.bankConfig = getBankConfig();
+        if (typeof renderAdminQRConfig === 'function') renderAdminQRConfig();
+    }
+    if (e.key === 'ff_sync_trigger') {
+        // Trigger đồng bộ toàn bộ
+        FILE_DATA = getGlobalFiles();
+        APP.files = [...FILE_DATA];
+        APP.filteredFiles = [...FILE_DATA];
+        if (typeof renderFiles === 'function') renderFiles();
+        if (typeof renderFileGrid === 'function') renderFileGrid();
+        if (APP.isAdmin && typeof renderAdminFiles === 'function') renderAdminFiles();
+        if (typeof updateRealStats === 'function') updateRealStats();
+    }
 });
+
+// ===== HÀM ĐỒNG BỘ DỮ LIỆU LÊN SERVER (TÙY CHỌN) =====
+function syncDataToServer(dataType, data) {
+    // Nếu mày có backend, thay thế bằng fetch/axios
+    console.log(`[SYNC] ${dataType}:`, data);
+    // Ví dụ:
+    // fetch('/api/sync', {
+    //     method: 'POST',
+    //     headers: { 'Content-Type': 'application/json' },
+    //     body: JSON.stringify({ type: dataType, data: data, timestamp: Date.now() })
+    // }).catch(e => console.error('Sync error:', e));
+}
 
 // ====================================================
 //  SPIN PRIZES
@@ -244,6 +307,7 @@ function saveCart(cart) {
     localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(cart));
     updateCartUI();
     try { localStorage.setItem('ff_sync_trigger', Date.now().toString()); } catch (e) {}
+    syncDataToServer('cart', cart);
 }
 
 function addToCart(fileId) {
@@ -485,6 +549,7 @@ const Auth = {
     saveUsers(users) { 
         localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
         try { localStorage.setItem('ff_sync_trigger', Date.now().toString()); } catch (e) {}
+        syncDataToServer('users', users);
     },
     
     getCurrentUser() {
@@ -816,6 +881,7 @@ const Auth = {
     },
     saveReviews(reviews) {
         localStorage.setItem(STORAGE_KEY_REVIEWS, JSON.stringify(reviews));
+        syncDataToServer('reviews', reviews);
     },
     
     addReview(userId, username, fileId, fileName, rating, content, images) {
@@ -984,6 +1050,7 @@ const Auth = {
     },
     saveGiftcodes(codes) {
         localStorage.setItem(STORAGE_KEY_GIFTCODES, JSON.stringify(codes));
+        syncDataToServer('giftcodes', codes);
     },
     createGiftcode(code, value) {
         const codes = this.getGiftcodes();
@@ -1047,6 +1114,7 @@ const Auth = {
     },
     saveEvents(events) {
         localStorage.setItem(STORAGE_KEY_EVENTS, JSON.stringify(events));
+        syncDataToServer('events', events);
     },
     addEvent(eventData) {
         const events = this.getEvents();
@@ -1090,6 +1158,7 @@ function getBankConfig() {
 
 function saveBankConfig(config) {
     localStorage.setItem(STORAGE_KEY_BANK, JSON.stringify(config));
+    syncDataToServer('bank', config);
 }
 
 function renderAdminQRConfig() {
@@ -1580,6 +1649,7 @@ function getSupportLinks() {
 function saveSupportLinks(data) {
     localStorage.setItem(STORAGE_KEY_SUPPORT, JSON.stringify(data));
     updateSupportUI(data);
+    syncDataToServer('support', data);
 }
 
 function updateSupportUI(data) {
@@ -1632,6 +1702,7 @@ function getSpinWeights() {
 
 function saveSpinWeights(weights) {
     localStorage.setItem(STORAGE_KEY_SPIN_WEIGHTS, JSON.stringify(weights));
+    syncDataToServer('spin_weights', weights);
 }
 
 function renderAdminSpinWeights() {
@@ -2985,7 +3056,7 @@ function renderAdminFiles() {
             <span class="file-name"><i class="fas fa-file"></i> ${f.name}</span>
             <span class="file-price">${f.price.toLocaleString()}đ</span>
             <span class="file-category">${f.category} | ⭐ ${f.rating}</span>
-            <span class="file-download-link" style="font-size:11px;color:var(--text-muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            <span class="file-download-link">
                 ${f.downloadLink ? '🔗 Có link' : '❌ Chưa có link'}
             </span>
             <div class="file-actions">
@@ -3667,7 +3738,6 @@ function spinTheWheel() {
                 showToast(`Cộng +${prize.value.toLocaleString()}đ!`, 'fas fa-circle-check', 'success');
             }
         }
-        // Lưu spinCount và winCount vào user
         const users = Auth.getUsers();
         const uIdx = users.findIndex(u => u.id === APP.currentUser.id);
         if (uIdx !== -1) {

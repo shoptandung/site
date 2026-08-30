@@ -1,7 +1,32 @@
 /* ====================================================
    SHOP TẤN DŨNG FF - STYLE HOÀN CHỈNH v16.0
    GIỎ HÀNG + QR ẢNH + XÓA DOWNLOAD + LINK TẢI
+   RESPONSIVE + CHỐNG PHÓNG TO
    ==================================================== */
+
+/* ===== CHỐNG PHÓNG TO MÀN HÌNH ===== */
+html, body {
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+img, video, canvas, svg {
+    pointer-events: none;
+    -webkit-touch-callout: none;
+    max-width: 100%;
+    height: auto;
+}
+
+input, textarea, select, button {
+    font-size: 16px !important;
+    touch-action: manipulation;
+    -webkit-appearance: none;
+    appearance: none;
+}
 
 /* ===== RESET & BASE ===== */
 * {
@@ -2662,6 +2687,14 @@ header.scrolled {
     font-size: 12px;
     color: var(--text-muted);
 }
+.admin-file-item .file-download-link {
+    font-size: 11px;
+    color: var(--text-muted);
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .admin-file-item .file-actions {
     display: flex;
     gap: 6px;
@@ -3160,144 +3193,828 @@ header.scrolled {
 }
 
 /* ====================================================
-   RESPONSIVE
+   RESPONSIVE - TỐI ƯU CHO ĐIỆN THOẠI
    ==================================================== */
-@media (max-width: 1024px) {
-    .home-layout { grid-template-columns: 1fr; }
-    .sidebar-box { position: static; }
-    .nav-links { display: none; }
-    .nav-links.open {
-        display: flex;
+
+/* Tablet */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .home-layout {
+        grid-template-columns: 220px 1fr;
+        gap: 16px;
+    }
+    .products-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+    .file-grid-container {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+    .events-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .missions-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .vip-levels {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    .admin-stats-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    .nav-links {
+        gap: 2px;
+    }
+    .nav-links li a {
+        font-size: 12px;
+        padding: 6px 12px;
+    }
+}
+
+/* Mobile First - Mặc định cho mobile */
+@media (max-width: 768px) {
+    /* Header */
+    header {
+        padding: 10px 16px;
+        flex-wrap: wrap;
+    }
+    .logo-area h1 {
+        font-size: 16px;
+    }
+    .logo-area i {
+        font-size: 22px;
+    }
+    .version-badge {
+        font-size: 7px;
+        padding: 1px 8px;
+    }
+    
+    /* Navigation */
+    .nav-links {
+        display: none;
         flex-direction: column;
-        position: absolute;
-        top: 70px;
-        left: 0;
         width: 100%;
         background: var(--bg-glass);
         backdrop-filter: blur(40px);
-        padding: 20px;
-        border-bottom: 1px solid var(--border-glass);
+        padding: 16px;
+        border-top: 1px solid var(--border-glass);
+        position: absolute;
+        top: 60px;
+        left: 0;
+        z-index: 99;
+        max-height: 70vh;
+        overflow-y: auto;
     }
-    .mobile-toggle { display: block; }
-    header { padding: 12px 20px; flex-wrap: wrap; }
-    .user-actions { gap: 10px; }
-    .balance-badge { padding: 6px 14px; font-size: 12px; }
-    .btn-auth { padding: 7px 14px; font-size: 12px; }
-    .products-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
-    .admin-chart-row { grid-template-columns: 1fr; }
-    .admin-stats-grid { grid-template-columns: repeat(2, 1fr); }
-    .file-filter-options { flex-direction: column; width: 100%; }
-    .file-filter-options select { width: 100%; }
-    .events-grid { grid-template-columns: repeat(2, 1fr); }
-    .missions-grid { grid-template-columns: repeat(2, 1fr); }
-    .vip-user-info { flex-direction: column; text-align: center; }
-    .profile-info { flex-direction: column; align-items: center; }
-    .admin-action-tabs { flex-wrap: wrap; }
-    .admin-tab-btn { flex: 1; min-width: 100px; justify-content: center; }
-    .support-grid { grid-template-columns: 1fr 1fr; }
-}
-
-@media (max-width: 768px) {
-    .review-stats { grid-template-columns: 1fr 1fr; }
-    .review-stat-box:last-child { grid-column: span 2; }
-    .review-filter { flex-direction: column; }
-    .review-filter select { min-width: 100%; }
-    .file-grid-container { grid-template-columns: repeat(2, 1fr); }
-    .events-grid { grid-template-columns: 1fr; }
-    .missions-grid { grid-template-columns: 1fr; }
-    .spin-stats-bar { flex-direction: column; align-items: center; gap: 8px; }
-    .wheel-box { width: 300px; height: 300px; }
-    .vip-levels { grid-template-columns: repeat(3, 1fr); }
-    .admin-stats-grid { grid-template-columns: 1fr 1fr; }
-    .admin-tab-btn { font-size: 12px; padding: 8px 14px; }
-    .support-grid { grid-template-columns: 1fr; }
-}
-
-@media (max-width: 600px) {
-    .products-grid { grid-template-columns: 1fr 1fr; }
-    .logo-area h1 { font-size: 16px; }
-    .logo-area i { font-size: 24px; }
-    .main-container { padding: 0 12px; }
-    .page-card-box { padding: 20px; }
-    .modal-box { padding: 25px; }
-    .wheel-box { width: 260px; height: 260px; }
-    .wheel-center-btn { width: 60px; height: 60px; }
-    .wheel-center-btn i { font-size: 16px; }
-    .wheel-center-btn span { font-size: 8px; }
-    .history-table th,
-    .history-table td { padding: 10px 12px; font-size: 12px; }
-    .music-widget {
-        bottom: 10px;
-        right: 10px;
-        padding: 8px 14px;
+    .nav-links.open {
+        display: flex;
+    }
+    .nav-links li a {
+        padding: 10px 14px;
+        font-size: 14px;
+        width: 100%;
+    }
+    .mobile-toggle {
+        display: block !important;
+    }
+    
+    /* User actions */
+    .user-actions {
+        gap: 8px;
+    }
+    .balance-badge {
+        padding: 4px 12px;
+        font-size: 12px;
+    }
+    .btn-auth {
+        padding: 6px 12px;
         font-size: 11px;
     }
-    .stats-widget {
-        grid-template-columns: 1fr 1fr;
-        gap: 4px 12px;
+    .user-profile-badge {
+        padding: 4px 10px 4px 4px;
+    }
+    .user-profile-badge img {
+        width: 28px;
+        height: 28px;
+    }
+    .user-profile-badge span {
+        font-size: 11px;
+    }
+    .user-dropdown {
+        right: 0;
+        left: auto;
+        min-width: 180px;
+        top: 48px;
+    }
+    
+    /* Home layout */
+    .home-layout {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    .sidebar-box {
+        position: static;
+        padding: 16px;
+    }
+    .main-container {
+        padding: 0 12px;
+        margin: 16px auto;
+    }
+    .page-section-container {
+        padding: 0 12px;
+        margin: 20px auto;
+    }
+    
+    /* Products grid */
+    .products-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+    .products-grid.list-view {
+        grid-template-columns: 1fr;
+    }
+    .product-card {
+        border-radius: 14px;
+    }
+    .product-img-wrapper {
+        height: 120px;
+    }
+    .product-title {
+        font-size: 13px;
+    }
+    .product-price {
+        font-size: 14px;
+    }
+    .product-stats {
+        font-size: 10px;
+        padding: 4px 8px;
+    }
+    .product-details {
+        padding: 10px 12px;
+        gap: 6px;
+    }
+    .btn-buy {
+        font-size: 11px;
+        padding: 8px;
+    }
+    .product-badge {
+        font-size: 8px;
+        padding: 2px 10px;
+        top: 8px;
+        right: 8px;
+    }
+    .login-required-msg {
+        font-size: 10px;
+        padding: 8px;
+    }
+    
+    /* Section header */
+    .section-header h3 {
+        font-size: 16px;
+    }
+    .view-btn {
+        padding: 4px 10px;
         font-size: 12px;
+    }
+    
+    /* Chart */
+    .chart-wrapper {
+        height: 180px;
+    }
+    .chart-container-box {
+        padding: 16px;
+    }
+    .chart-header h3 {
+        font-size: 14px;
+    }
+    
+    /* File grid */
+    .file-grid-container {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+    .file-filter-bar {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .file-search {
+        width: 100%;
+    }
+    .file-filter-options {
+        width: 100%;
+        flex-direction: column;
+    }
+    .file-filter-options select {
+        width: 100%;
+    }
+    
+    /* Cart */
+    .cart-item {
+        padding: 10px 12px;
+        gap: 10px;
+    }
+    .cart-item img {
+        width: 50px;
+        height: 50px;
+    }
+    .cart-item .info .name {
+        font-size: 13px;
+    }
+    .cart-item .info .price {
+        font-size: 13px;
+    }
+    .cart-summary .total {
+        font-size: 20px;
+    }
+    .cart-summary .btn-checkout {
+        font-size: 13px;
+        padding: 10px 20px;
+    }
+    
+    /* Wheel */
+    .wheel-box {
+        width: 260px;
+        height: 260px;
+        border-width: 6px;
+    }
+    .wheel-center-btn {
+        width: 56px;
+        height: 56px;
+    }
+    .wheel-center-btn i {
+        font-size: 16px;
+    }
+    .wheel-center-btn span {
+        font-size: 8px;
+    }
+    .wheel-pointer {
+        font-size: 32px;
+        top: -22px;
+    }
+    .spin-stats-bar {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 12px 16px;
+    }
+    .spin-stat {
+        font-size: 12px;
+    }
+    
+    /* Events & Missions */
+    .events-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    .missions-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    .event-card {
+        padding: 16px;
+    }
+    .mission-card {
+        padding: 14px;
+        flex-wrap: wrap;
+    }
+    .mission-card .mission-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 22px;
+    }
+    
+    /* VIP */
+    .vip-user-info {
+        flex-direction: column;
+        text-align: center;
+        padding: 16px;
+        gap: 16px;
+    }
+    .vip-avatar img {
+        width: 64px;
+        height: 64px;
+    }
+    .vip-name {
+        font-size: 18px;
+    }
+    .vip-stats {
+        justify-content: center;
+    }
+    .vip-levels {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+    .vip-level-card {
+        padding: 12px;
+    }
+    .vip-level-card .vip-level-icon {
+        font-size: 22px;
+    }
+    .vip-level-card .vip-level-name {
+        font-size: 12px;
+    }
+    .vip-level-card .vip-level-discount {
+        font-size: 15px;
+    }
+    .benefits-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    /* Reviews */
+    .review-stats {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+    .review-stat-number {
+        font-size: 22px;
+    }
+    .review-filter {
+        flex-direction: column;
+    }
+    .review-filter select {
+        width: 100%;
+    }
+    .review-item {
+        padding: 14px;
+    }
+    .review-user img {
+        width: 28px;
+        height: 28px;
+    }
+    .review-stars {
+        font-size: 12px;
+    }
+    .review-content {
+        font-size: 13px;
+    }
+    .review-images img {
+        width: 64px;
+        height: 64px;
+    }
+    
+    /* Top ranking */
+    .top-item {
+        padding: 10px 14px;
+        gap: 10px;
+    }
+    .top-item .rank {
+        font-size: 16px;
+        min-width: 30px;
+    }
+    .top-item .avatar {
+        width: 32px;
+        height: 32px;
+    }
+    .top-item .info .name {
+        font-size: 13px;
+    }
+    .top-item .amount {
+        font-size: 14px;
+    }
+    .top-filter .btn-filter {
+        padding: 6px 14px;
+        font-size: 12px;
+    }
+    
+    /* Support */
+    .support-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    .support-card {
+        padding: 14px 18px;
+    }
+    .support-card i {
+        font-size: 24px;
+    }
+    
+    /* History table */
+    .history-table {
+        font-size: 12px;
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+    .history-table th,
+    .history-table td {
+        padding: 8px 12px;
+        font-size: 11px;
+    }
+    
+    /* Profile */
+    .profile-info {
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+    }
+    .profile-avatar img {
+        width: 100px;
+        height: 100px;
     }
     .profile-field {
         flex-direction: column;
         align-items: flex-start;
         gap: 4px;
+        padding: 8px 12px;
     }
-    .profile-field label { min-width: auto; }
-    .deposit-request-item { flex-direction: column; align-items: stretch; }
-    .deposit-request-item .req-actions { justify-content: center; }
-    .admin-stat-card .stat-number { font-size: 20px; }
-    .admin-stats-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-    .amount-presets { grid-template-columns: repeat(2, 1fr); }
-    .payment-methods { flex-direction: column; }
-    .deposit-quick-actions { flex-direction: column; }
-    .qr-code-wrapper { width: 160px; height: 160px; }
-    .vip-stats { flex-direction: column; gap: 8px; }
-    .review-stats { grid-template-columns: 1fr 1fr; }
-    .review-stat-box:last-child { grid-column: span 2; }
-    .vip-levels { grid-template-columns: repeat(2, 1fr); }
-    .top-item { flex-wrap: wrap; }
-    .top-item .rank { min-width: 30px; font-size: 16px; }
-    .top-item .amount { font-size: 14px; }
-    .file-grid-container { grid-template-columns: 1fr 1fr; }
-    .spin-history-item { font-size: 12px; }
-    .admin-action-tabs { flex-direction: column; }
-    .admin-tab-btn { width: 100%; justify-content: center; }
-    .admin-user-table { font-size: 12px; }
+    .profile-field label {
+        min-width: auto;
+        font-size: 12px;
+    }
+    .profile-field span {
+        font-size: 14px;
+    }
+    
+    /* Page cards */
+    .page-card-box {
+        padding: 16px;
+        border-radius: 16px;
+    }
+    .page-card-box h2 {
+        font-size: 18px;
+        gap: 10px;
+    }
+    
+    /* Modal */
+    .modal-box {
+        padding: 24px 20px;
+        max-width: 96%;
+        border-radius: 18px;
+        max-height: 95vh;
+        overflow-y: auto;
+    }
+    .modal-box h2 {
+        font-size: 18px;
+    }
+    .modal-close {
+        top: 14px;
+        right: 18px;
+        font-size: 22px;
+    }
+    .form-control {
+        font-size: 14px;
+        padding: 10px 14px;
+    }
+    .btn-submit {
+        font-size: 13px;
+        padding: 11px;
+    }
+    
+    /* Admin */
+    .admin-container {
+        padding: 0 10px;
+        margin: 16px auto;
+    }
+    .admin-header h2 {
+        font-size: 18px;
+    }
+    .admin-header-info {
+        font-size: 11px;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .admin-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+    .admin-stat-card {
+        padding: 14px;
+    }
+    .admin-stat-card .stat-number {
+        font-size: 20px;
+    }
+    .admin-stat-card .stat-label {
+        font-size: 10px;
+    }
+    .admin-stat-card .stat-icon {
+        font-size: 18px;
+        right: 10px;
+        top: 10px;
+    }
+    .admin-action-tabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        gap: 4px;
+        padding: 4px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .admin-tab-btn {
+        font-size: 11px;
+        padding: 6px 14px;
+        white-space: nowrap;
+        flex: 0 0 auto;
+    }
+    .admin-section {
+        padding: 16px;
+    }
+    .admin-section-header h3 {
+        font-size: 14px;
+    }
+    .admin-section-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    .admin-section-actions {
+        justify-content: center;
+    }
+    .admin-section-actions .btn-filter {
+        font-size: 11px;
+        padding: 4px 12px;
+    }
+    
+    /* Deposit requests */
+    .deposit-request-item {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 12px 16px;
+        gap: 10px;
+    }
+    .deposit-request-item .req-info .req-amount {
+        font-size: 17px;
+    }
+    .deposit-request-item .req-actions {
+        justify-content: center;
+    }
+    .deposit-request-item .req-actions button {
+        font-size: 11px;
+        padding: 4px 14px;
+    }
+    
+    /* Admin user table */
+    .admin-user-table {
+        font-size: 11px;
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
     .admin-user-table th,
-    .admin-user-table td { padding: 8px 10px; }
-    .giftcode-item { flex-direction: column; align-items: stretch; text-align: center; }
-    .admin-event-item .event-header { flex-direction: column; align-items: stretch; }
-    .admin-event-item .event-actions { justify-content: center; }
-    .admin-file-item { flex-direction: column; align-items: stretch; text-align: center; }
-    .spin-weight-item { flex-wrap: wrap; justify-content: center; }
-    .spin-weight-item input[type="number"] { width: 60px; }
-    #securityLog { font-size: 11px; max-height: 150px; }
-    .cart-item { flex-wrap: wrap; }
-    .cart-summary { flex-direction: column; align-items: stretch; }
-    .cart-summary .btn-checkout { width: 100%; }
+    .admin-user-table td {
+        padding: 6px 10px;
+    }
+    .admin-user-table .user-actions-cell button {
+        font-size: 10px;
+        padding: 2px 8px;
+    }
+    
+    /* Giftcode, events, files admin */
+    .giftcode-item,
+    .admin-event-item,
+    .admin-file-item {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+        gap: 8px;
+        padding: 12px;
+    }
+    .giftcode-item .code {
+        font-size: 13px;
+    }
+    .admin-event-item .event-name {
+        font-size: 14px;
+    }
+    .admin-event-item .event-actions {
+        justify-content: center;
+    }
+    .admin-file-item .file-actions {
+        justify-content: center;
+    }
+    
+    /* Spin weights */
+    .spin-weight-item {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 6px;
+    }
+    .spin-weight-item input[type="number"] {
+        width: 60px;
+    }
+    
+    /* QR */
+    .qr-code-wrapper {
+        width: 160px;
+        height: 160px;
+    }
+    .qr-info-row {
+        font-size: 12px;
+    }
+    .qr-actions {
+        flex-direction: column;
+    }
+    .qr-actions button {
+        width: 100%;
+    }
+    
+    /* Payment */
+    .payment-methods {
+        flex-direction: column;
+    }
+    .amount-presets {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+    }
+    .preset-btn {
+        font-size: 11px;
+        padding: 8px 6px;
+    }
+    .deposit-quick-actions {
+        flex-direction: column;
+    }
+    
+    /* Music widget */
+    .music-widget {
+        bottom: 12px;
+        right: 12px;
+        padding: 8px 14px;
+        font-size: 11px;
+        gap: 10px;
+    }
+    .music-controls {
+        font-size: 13px;
+        gap: 10px;
+    }
+    
+    /* Cart badge */
+    .cart-badge {
+        bottom: 75px;
+        right: 15px;
+        width: 48px;
+        height: 48px;
+        font-size: 18px;
+    }
+    .cart-badge span {
+        width: 18px;
+        height: 18px;
+        font-size: 9px;
+        top: -4px;
+        right: -4px;
+    }
+    
+    /* Scroll top */
+    .scroll-top {
+        bottom: 80px;
+        right: 15px;
+        width: 38px;
+        height: 38px;
+        font-size: 15px;
+    }
+    
+    /* Security log */
+    #securityLog {
+        font-size: 11px;
+        max-height: 150px;
+    }
+    
+    /* File detail modal */
+    .file-detail-card .detail-header {
+        flex-direction: column;
+        text-align: center;
+    }
+    .file-detail-card .detail-header img {
+        width: 100px;
+        height: 100px;
+    }
+    .file-detail-card .detail-header .info h3 {
+        font-size: 16px;
+    }
+    .file-detail-card .detail-body .note {
+        font-size: 12px;
+        padding: 10px 12px;
+    }
+    .file-detail-card .detail-body .download-link-box {
+        font-size: 12px;
+        padding: 10px 12px;
+    }
+    .file-detail-card .detail-body .download-link-box a {
+        font-size: 12px;
+    }
+    .file-detail-card .detail-footer {
+        font-size: 11px;
+        flex-direction: column;
+        gap: 6px;
+        text-align: center;
+    }
 }
 
+/* Small mobile */
 @media (max-width: 400px) {
-    .products-grid { grid-template-columns: 1fr; }
-    .admin-stats-grid { grid-template-columns: 1fr; }
-    .amount-presets { grid-template-columns: 1fr 1fr; }
-    .vip-levels { grid-template-columns: 1fr 1fr; }
-    .review-stats { grid-template-columns: 1fr; }
-    .review-stat-box:last-child { grid-column: span 1; }
-    .logo-area h1 { font-size: 14px; }
-    .logo-area i { font-size: 20px; }
-    .version-badge { font-size: 7px; padding: 1px 6px; }
-    .nav-links li a { font-size: 12px; padding: 6px 12px; }
-    .balance-badge { font-size: 11px; padding: 4px 10px; }
-    .btn-auth { font-size: 11px; padding: 5px 12px; }
-    .file-grid-container { grid-template-columns: 1fr; }
-    .events-grid { grid-template-columns: 1fr; }
-    .missions-grid { grid-template-columns: 1fr; }
-    .wheel-box { width: 220px; height: 220px; }
-    .wheel-center-btn { width: 50px; height: 50px; }
-    .wheel-center-btn i { font-size: 14px; }
-    .wheel-pointer { font-size: 30px; top: -22px; }
-    .spin-stats-bar { padding: 12px 16px; gap: 4px; }
-    .spin-stat { font-size: 12px; }
-    .support-grid { grid-template-columns: 1fr; }
+    .products-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+    .file-grid-container {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+    .product-img-wrapper {
+        height: 100px;
+    }
+    .product-title {
+        font-size: 12px;
+    }
+    .product-price {
+        font-size: 13px;
+    }
+    .btn-buy {
+        font-size: 10px;
+        padding: 6px;
+    }
+    .wheel-box {
+        width: 220px;
+        height: 220px;
+    }
+    .wheel-center-btn {
+        width: 48px;
+        height: 48px;
+    }
+    .wheel-center-btn i {
+        font-size: 14px;
+    }
+    .vip-levels {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .review-stats {
+        grid-template-columns: 1fr 1fr;
+    }
+    .review-stat-box:last-child {
+        grid-column: span 2;
+    }
+    .admin-stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .amount-presets {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .modal-box {
+        padding: 16px 14px;
+    }
+    .modal-box h2 {
+        font-size: 16px;
+    }
+    .form-control {
+        font-size: 13px;
+        padding: 8px 12px;
+    }
+    .btn-submit {
+        font-size: 12px;
+        padding: 10px;
+    }
+    .page-card-box {
+        padding: 12px;
+    }
+    .page-card-box h2 {
+        font-size: 16px;
+    }
+    .logo-area h1 {
+        font-size: 14px;
+    }
+    .logo-area i {
+        font-size: 18px;
+    }
+    .version-badge {
+        font-size: 6px;
+        padding: 1px 6px;
+    }
+    header {
+        padding: 8px 12px;
+    }
+    .balance-badge {
+        font-size: 10px;
+        padding: 3px 8px;
+    }
+    .btn-auth {
+        font-size: 10px;
+        padding: 4px 10px;
+    }
+    .user-profile-badge img {
+        width: 24px;
+        height: 24px;
+    }
+    .user-profile-badge span {
+        font-size: 10px;
+    }
+    .spin-stats-bar {
+        flex-direction: column;
+        gap: 4px;
+        padding: 10px 12px;
+    }
+    .spin-stat {
+        font-size: 11px;
+    }
+    .review-stats {
+        grid-template-columns: 1fr;
+    }
+    .review-stat-box:last-child {
+        grid-column: span 1;
+    }
+    .support-card {
+        padding: 10px 14px;
+    }
+    .support-card i {
+        font-size: 20px;
+    }
+    .support-card strong {
+        font-size: 12px;
+    }
+    .support-card span {
+        font-size: 10px;
+    }
 }
