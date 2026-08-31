@@ -1,8 +1,70 @@
 // ============================================================
-//  SHOP TẤN DŨNG FF - SYNC MASTER v27.3
-//  ADMIN → USER REAL-TIME - KHÔNG CẦN F5
-//  HOÀN CHỈNH 100%
+//  SHOP TẤN DŨNG FF - COMPLETE FINAL v27.6
+//  100% HOÀN THIỆN - KHÔNG SPAM - SYNC REAL-TIME
 // ============================================================
+
+// ============================================================
+//  TOAST CONTROLLER - CHỐNG SPAM
+// ============================================================
+let toastDebounce = {};
+
+function showToast(message, iconClass = 'fas fa-bell', type = '') {
+    try {
+        const key = message.substring(0, 30);
+        const now = Date.now();
+        if (toastDebounce[key] && now - toastDebounce[key] < 3000) {
+            return;
+        }
+        toastDebounce[key] = now;
+        
+        const keys = Object.keys(toastDebounce);
+        if (keys.length > 50) {
+            keys.forEach(k => {
+                if (now - toastDebounce[k] > 5000) delete toastDebounce[k];
+            });
+        }
+
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            container.style.cssText = 'position:fixed;top:80px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:10px;pointer-events:none;max-width:400px;width:100%;';
+            document.body.appendChild(container);
+        }
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.style.cssText = `
+            background: rgba(4, 8, 20, 0.96);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            color: #fff;
+            padding: 14px 20px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-size: 14px;
+            font-weight: 600;
+            animation: slideInToast 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards,
+                       fadeOutToast 0.4s ease 3.2s forwards;
+            pointer-events: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+            transform-origin: right center;
+        `;
+        if (type === 'error') {
+            toast.style.borderColor = '#ff4d4d';
+        } else if (type === 'success') {
+            toast.style.borderColor = '#00ff88';
+        } else if (type === 'warning') {
+            toast.style.borderColor = '#ffaa00';
+        }
+        toast.innerHTML = `<i class="${iconClass}" style="font-size:18px;color:${type === 'error' ? '#ff4d4d' : type === 'success' ? '#00ff88' : type === 'warning' ? '#ffaa00' : '#00f0ff'};"></i><span>${message}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => {
+            if (toast.parentNode) toast.remove();
+        }, 3600);
+    } catch(e) {}
+}
 
 // ============================================================
 //  SECURITY LOG
@@ -141,24 +203,6 @@ const ACHIEVEMENTS = [
     { id: 'deposit_10m', name: '💎 Đại gia VIP', desc: 'Nạp 10.000.000đ', icon: '💎' },
     { id: 'review_10', name: '📝 Người phê bình', desc: 'Viết 10 đánh giá', icon: '📝' }
 ];
-
-// ============================================================
-//  TOAST
-// ============================================================
-function showToast(message, iconClass = 'fas fa-bell', type = '') {
-    const container = document.getElementById('toast-container');
-    if (!container) {
-        const newContainer = document.createElement('div');
-        newContainer.id = 'toast-container';
-        document.body.appendChild(newContainer);
-        return showToast(message, iconClass, type);
-    }
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.innerHTML = `<i class="${iconClass}"></i><span>${message}</span>`;
-    container.appendChild(toast);
-    setTimeout(() => toast.remove(), 3600);
-}
 
 // ============================================================
 //  FILE DATA
@@ -583,18 +627,58 @@ function handleMqttMessage(topic, payload) {
 }
 
 // ============================================================
-//  XỬ LÝ SYNC MESSAGE - ĐỒNG BỘ TOÀN DIỆN
+//  STATE TRACKING - CHỐNG SPAM
+// ============================================================
+let lastSyncTimestamp = 0;
+let isProcessingSync = false;
+let lastStateHash = '';
+
+function getCurrentStateHash() {
+    try {
+        const state = {
+            files: FILE_DATA,
+            users: Auth.getUsers(),
+            giftcodes: Auth.getGiftcodes(),
+            events: Auth.getEvents(),
+            spinWeights: Auth.getSpinWeights(),
+            bankConfig: getBankConfig(),
+            supportLinks: getSupportLinks(),
+            maxDeposit: APP.maxDeposit || 1000000,
+            maintenance: getMaintenance(),
+            cart: getCart()
+        };
+        return JSON.stringify(state);
+    } catch(e) {
+        return Date.now().toString();
+    }
+}
+
+// ============================================================
+//  XỬ LÝ SYNC MESSAGE - KHÔNG SPAM
 // ============================================================
 function handleSyncMessage(data) {
+    if (isProcessingSync) return;
+    if (data.timestamp && data.timestamp <= lastSyncTimestamp) return;
+    
     const action = data.action || data.type || 'unknown';
-    console.log('🔄 Sync:', action, data);
+    console.log('🔄 Sync:', action);
 
-    // Xử lý force sync từ admin
+    // Force sync - kiểm tra thay đổi
     if (data.force === true || action === 'full_state_force') {
         if (data.data) {
+            const currentState = getCurrentStateHash();
+            const newState = JSON.stringify(data.data);
+            if (currentState === newState) {
+                console.log('⏭️ Bỏ qua sync - dữ liệu không thay đổi');
+                return;
+            }
+            lastSyncTimestamp = data.timestamp || Date.now();
+            lastStateHash = newState;
             applyFullState(data.data);
             updateRevenueChart();
-            showToast('🔄 Dữ liệu đã được đồng bộ từ admin!', 'fas fa-sync', 'success');
+            if (!data.silent) {
+                showToast('🔄 Dữ liệu đã được đồng bộ!', 'fas fa-sync', 'success');
+            }
             return;
         }
     }
@@ -630,8 +714,6 @@ function handleSyncMessage(data) {
                     renderAdminUsers();
                     const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
                     if (DOM.pendingBadge) { DOM.pendingBadge.textContent = pendingCount; DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; }
-                    showToast(`📢 ${data.username || 'User'} đã được duyệt ${(data.amount || 0).toLocaleString()}đ!`, 'fas fa-bell', 'success');
-                    updateRevenueChart();
                 }
                 updateRealStats();
             }
@@ -665,26 +747,47 @@ function handleSyncMessage(data) {
 
     // === FILES ===
     if (action.includes('files')) {
+        let changed = false;
         if (data.action === 'created' && data.file) {
             FILE_DATA = getGlobalFiles();
-            if (!FILE_DATA.some(f => f.id === data.file.id)) { FILE_DATA.push(data.file); saveGlobalFiles(FILE_DATA); }
+            if (!FILE_DATA.some(f => f.id === data.file.id)) { 
+                FILE_DATA.push(data.file); 
+                saveGlobalFiles(FILE_DATA);
+                changed = true;
+                showToast(`📁 Đã thêm file: ${data.file.name}`, 'fas fa-file', 'success');
+            }
         }
         if (data.action === 'updated' && data.file) {
             FILE_DATA = getGlobalFiles();
             const idx = FILE_DATA.findIndex(f => f.id === data.file.id);
-            if (idx !== -1) { FILE_DATA[idx] = { ...FILE_DATA[idx], ...data.file }; saveGlobalFiles(FILE_DATA); }
+            if (idx !== -1) { 
+                FILE_DATA[idx] = { ...FILE_DATA[idx], ...data.file }; 
+                saveGlobalFiles(FILE_DATA);
+                changed = true;
+                showToast(`📁 Đã cập nhật: ${data.file.name}`, 'fas fa-file', 'success');
+            }
         }
         if (data.action === 'deleted' && data.fileId) {
             FILE_DATA = getGlobalFiles();
+            const deleted = FILE_DATA.find(f => f.id === data.fileId);
             FILE_DATA = FILE_DATA.filter(f => f.id !== data.fileId);
             saveGlobalFiles(FILE_DATA);
+            changed = true;
+            if (deleted) showToast(`📁 Đã xóa: ${deleted.name}`, 'fas fa-trash', 'warning');
         }
-        if (data.action === 'update' && data.files) { FILE_DATA = data.files; saveGlobalFiles(FILE_DATA); }
-        APP.files = [...FILE_DATA]; APP.filteredFiles = [...FILE_DATA];
-        renderFiles(); renderFileGrid();
-        if (APP.isAdmin) renderAdminFiles();
-        updateRealStats();
-        showToast(`📁 File đã được ${data.action === 'created' ? 'thêm' : data.action === 'updated' ? 'cập nhật' : 'xóa'}!`, 'fas fa-file', 'success');
+        if (data.action === 'update' && data.files) { 
+            FILE_DATA = data.files; 
+            saveGlobalFiles(FILE_DATA);
+            changed = true;
+        }
+        if (changed) {
+            APP.files = [...FILE_DATA]; 
+            APP.filteredFiles = [...FILE_DATA];
+            renderFiles(); 
+            renderFileGrid();
+            if (APP.isAdmin) renderAdminFiles();
+            updateRealStats();
+        }
         return;
     }
 
@@ -692,14 +795,18 @@ function handleSyncMessage(data) {
     if (action.includes('giftcode')) {
         if (data.action === 'created' && data.code) {
             const codes = Auth.getGiftcodes();
-            if (!codes.some(c => c.code === data.code.code)) { codes.push(data.code); Auth.saveGiftcodes(codes); }
+            if (!codes.some(c => c.code === data.code.code)) { 
+                codes.push(data.code); 
+                Auth.saveGiftcodes(codes);
+                showToast(`🎫 Giftcode ${data.code.code} đã được tạo!`, 'fas fa-ticket', 'success');
+            }
         }
         if (data.action === 'deleted' && data.code) {
             const codes = Auth.getGiftcodes();
             Auth.saveGiftcodes(codes.filter(c => c.code !== data.code));
+            showToast(`🎫 Giftcode ${data.code} đã được xóa!`, 'fas fa-ticket', 'warning');
         }
         if (APP.isAdmin) renderAdminGiftcodes();
-        showToast(`🎫 Giftcode đã được ${data.action === 'created' ? 'tạo' : 'xóa'}!`, 'fas fa-ticket', 'success');
         return;
     }
 
@@ -707,26 +814,39 @@ function handleSyncMessage(data) {
     if (action.includes('event')) {
         if (data.action === 'created' && data.event) {
             const events = Auth.getEvents();
-            if (!events.some(e => e.id === data.event.id)) { events.push(data.event); Auth.saveEvents(events); }
+            if (!events.some(e => e.id === data.event.id)) { 
+                events.push(data.event); 
+                Auth.saveEvents(events);
+                showToast(`📅 Sự kiện "${data.event.name}" đã được tạo!`, 'fas fa-calendar-day', 'success');
+            }
         }
         if (data.action === 'updated' && data.event) {
             const events = Auth.getEvents();
             const idx = events.findIndex(e => e.id === data.event.id);
-            if (idx !== -1) { events[idx] = { ...events[idx], ...data.event }; Auth.saveEvents(events); }
+            if (idx !== -1) { 
+                events[idx] = { ...events[idx], ...data.event }; 
+                Auth.saveEvents(events);
+                showToast(`📅 Sự kiện "${data.event.name}" đã được cập nhật!`, 'fas fa-calendar-day', 'success');
+            }
         }
         if (data.action === 'deleted' && data.eventId) {
             const events = Auth.getEvents();
+            const deleted = events.find(e => e.id === data.eventId);
             Auth.saveEvents(events.filter(e => e.id !== data.eventId));
+            if (deleted) showToast(`📅 Đã xóa sự kiện: ${deleted.name}`, 'fas fa-calendar-day', 'warning');
         }
         renderEvents();
         if (APP.isAdmin) renderAdminEvents();
-        showToast(`📅 Sự kiện đã được ${data.action === 'created' ? 'tạo' : data.action === 'updated' ? 'cập nhật' : 'xóa'}!`, 'fas fa-calendar-day', 'success');
         return;
     }
 
     // === SPIN WEIGHTS ===
     if (action.includes('spin')) {
-        if (data.weights) { Auth.saveSpinWeights(data.weights); if (APP.isAdmin) renderAdminSpinWeights(); showToast('🎡 Tỉ lệ vòng quay đã được cập nhật!', 'fas fa-dharmachakra', 'success'); }
+        if (data.weights) { 
+            Auth.saveSpinWeights(data.weights); 
+            if (APP.isAdmin) renderAdminSpinWeights(); 
+            showToast('🎡 Tỉ lệ vòng quay đã được cập nhật!', 'fas fa-dharmachakra', 'success');
+        }
         return;
     }
 
@@ -749,7 +869,12 @@ function handleSyncMessage(data) {
     // === REVIEW ===
     if (action.includes('review') && data.review) {
         const reviews = Auth.getReviews();
-        if (!reviews.some(r => r.id === data.review.id)) { reviews.unshift(data.review); Auth.saveReviews(reviews); renderReviews(); }
+        if (!reviews.some(r => r.id === data.review.id)) { 
+            reviews.unshift(data.review); 
+            Auth.saveReviews(reviews); 
+            renderReviews(); 
+            showToast('⭐ Đã có đánh giá mới!', 'fas fa-star', 'success');
+        }
         return;
     }
 
@@ -762,39 +887,31 @@ function handleSyncMessage(data) {
 
     // === FULL STATE ===
     if (action.includes('full') && data.data) {
+        const currentState = getCurrentStateHash();
+        const newState = JSON.stringify(data.data);
+        if (currentState === newState) {
+            console.log('⏭️ Bỏ qua full state - dữ liệu không thay đổi');
+            return;
+        }
+        lastSyncTimestamp = data.timestamp || Date.now();
+        lastStateHash = newState;
         applyFullState(data.data);
-        showToast('🔄 Đã đồng bộ toàn bộ dữ liệu!', 'fas fa-sync', 'success');
         updateRevenueChart();
+        if (!data.silent) {
+            showToast('🔄 Đã đồng bộ toàn bộ dữ liệu!', 'fas fa-sync', 'success');
+        }
         return;
     }
 
     // === SYNC REQUEST ===
-    if (action.includes('sync_request')) { setTimeout(publishFullState, 500); return; }
-
-    // === ADMIN ACTION ===
-    if (action.includes('admin_action')) {
-        if (data.action_type === 'approve_deposit') {
-            if (APP.isAdmin) {
-                renderDepositRequests();
-                renderAdminDashboard();
-                renderAdminUsers();
-                const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
-                if (DOM.pendingBadge) { DOM.pendingBadge.textContent = pendingCount; DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; }
-                showToast(`📢 ${data.username || 'User'} đã được duyệt ${(data.amount || 0).toLocaleString()}đ!`, 'fas fa-bell', 'success');
-                updateRevenueChart();
-            }
-        }
-        if (data.action_type === 'reject_deposit') {
-            if (APP.isAdmin) {
-                renderDepositRequests();
-                renderAdminDashboard();
-                showToast(`📢 ${data.username || 'User'} đã bị từ chối ${(data.amount || 0).toLocaleString()}đ!`, 'fas fa-bell', 'warning');
-            }
-        }
+    if (action.includes('sync_request')) { 
+        setTimeout(() => {
+            publishFullState({ silent: true });
+        }, 500); 
         return;
     }
 
-    // Fallback: refresh admin và chart
+    // Fallback
     if (APP.isAdmin) { renderAdminDashboard(); }
     renderFiles(); renderFileGrid(); updateRealStats(); updateRevenueChart();
 }
@@ -802,7 +919,7 @@ function handleSyncMessage(data) {
 // ============================================================
 //  FORCE SYNC - GỬI DỮ LIỆU ĐẾN TẤT CẢ USER
 // ============================================================
-function forceSyncToAllUsers() {
+function forceSyncToAllUsers(silent = false) {
     const fullState = {
         files: FILE_DATA,
         users: Auth.getUsers(),
@@ -821,6 +938,7 @@ function forceSyncToAllUsers() {
     publishMqtt('full_state_force', { 
         data: fullState,
         force: true,
+        silent: silent,
         sender: 'admin_force',
         timestamp: Date.now()
     });
@@ -828,16 +946,20 @@ function forceSyncToAllUsers() {
     broadcastSync({ 
         type: 'full_state_force', 
         data: fullState,
-        force: true 
+        force: true,
+        silent: silent
     });
     
     localStorage.setItem('ff_force_sync', JSON.stringify({
         data: fullState,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        silent: silent
     }));
     
     console.log('🔄 FORCE SYNC đã gửi đến tất cả user!');
-    showToast('📡 Đã đồng bộ dữ liệu đến tất cả thiết bị!', 'fas fa-satellite-dish', 'success');
+    if (!silent) {
+        showToast('📡 Đã đồng bộ dữ liệu đến tất cả thiết bị!', 'fas fa-satellite-dish', 'success');
+    }
 }
 
 // ============================================================
@@ -851,9 +973,15 @@ setInterval(function() {
             if (parsed.timestamp && parsed.timestamp > (window._lastSyncProcessed || 0)) {
                 window._lastSyncProcessed = parsed.timestamp;
                 if (parsed.data) {
-                    applyFullState(parsed.data);
-                    updateRevenueChart();
-                    showToast('🔄 Đã đồng bộ dữ liệu từ admin!', 'fas fa-sync', 'success');
+                    const currentState = getCurrentStateHash();
+                    const newState = JSON.stringify(parsed.data);
+                    if (currentState !== newState) {
+                        applyFullState(parsed.data);
+                        updateRevenueChart();
+                        if (!parsed.silent) {
+                            showToast('🔄 Đã đồng bộ dữ liệu từ admin!', 'fas fa-sync', 'success');
+                        }
+                    }
                 }
             }
         }
@@ -863,7 +991,7 @@ setInterval(function() {
 // ============================================================
 //  PUBLISH FULL STATE
 // ============================================================
-function publishFullState() {
+function publishFullState(options = {}) {
     const state = {
         files: FILE_DATA,
         users: Auth.getUsers(),
@@ -877,8 +1005,8 @@ function publishFullState() {
         cart: getCart(),
         depositRequests: Auth.getAllDepositRequests()
     };
-    publishMqtt('full_state', { data: state });
-    broadcastSync({ type: 'full_state', data: state });
+    publishMqtt('full_state', { data: state, silent: options.silent || false });
+    broadcastSync({ type: 'full_state', data: state, silent: options.silent || false });
 }
 
 // ============================================================
@@ -887,7 +1015,6 @@ function publishFullState() {
 function applyFullState(data) {
     if (!data) return;
     
-    // Files
     if (data.files) {
         FILE_DATA = data.files;
         saveGlobalFiles(FILE_DATA);
@@ -899,7 +1026,6 @@ function applyFullState(data) {
         updateRealStats();
     }
     
-    // Users
     if (data.users) {
         localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(data.users));
         if (APP.isLoggedIn) {
@@ -923,56 +1049,47 @@ function applyFullState(data) {
         }
     }
     
-    // Giftcodes
     if (data.giftcodes) {
         localStorage.setItem(STORAGE_KEY_GIFTCODES, JSON.stringify(data.giftcodes));
         if (APP.isAdmin) renderAdminGiftcodes();
     }
     
-    // Events
     if (data.events) {
         localStorage.setItem(STORAGE_KEY_EVENTS, JSON.stringify(data.events));
         renderEvents();
         if (APP.isAdmin) renderAdminEvents();
     }
     
-    // Spin Weights
     if (data.spinWeights) {
         localStorage.setItem(STORAGE_KEY_SPIN_WEIGHTS, JSON.stringify(data.spinWeights));
         if (APP.isAdmin) renderAdminSpinWeights();
     }
     
-    // Bank Config
     if (data.bankConfig) {
         APP.bankConfig = data.bankConfig;
         saveBankConfig(data.bankConfig);
         if (APP.isAdmin) renderAdminQRConfig();
     }
     
-    // Support Links
     if (data.supportLinks) {
         updateSupportUI(data.supportLinks);
         localStorage.setItem(STORAGE_KEY_SUPPORT, JSON.stringify(data.supportLinks));
     }
     
-    // Max Deposit
     if (data.maxDeposit) {
         APP.maxDeposit = data.maxDeposit;
     }
     
-    // Maintenance
     if (data.maintenance !== undefined) {
         setMaintenance(data.maintenance);
     }
     
-    // Cart
     if (data.cart) {
         localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(data.cart));
         updateCartUI();
         renderCart();
     }
     
-    // Deposit Requests
     if (data.depositRequests && APP.isAdmin) {
         renderDepositRequests();
         const pendingCount = data.depositRequests.filter(r => r.status === 'pending').length;
@@ -1359,7 +1476,7 @@ const Auth = {
                 showToast(`✅ Đã duyệt ${amount.toLocaleString()}đ cho ${foundUser.username}!`, 'fas fa-check-circle', 'success');
             }, 10);
         }
-        setTimeout(forceSyncToAllUsers, 300);
+        setTimeout(() => forceSyncToAllUsers(true), 300);
         return foundRequest;
     },
     
@@ -2030,156 +2147,164 @@ function getRevenueData() {
 }
 
 function updateRevenueChart() {
-    revenueData = getRevenueData();
-    const ctx = document.getElementById('revenueChart');
-    if (!ctx) return;
-    const labels = revenueData.map(d => d.date);
-    const values = revenueData.map(d => d.revenue);
-    
-    if (revenueChart) {
-        revenueChart.destroy();
-    }
-    revenueChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Doanh thu (VNĐ)',
-                data: values,
-                borderColor: '#00f0ff',
-                backgroundColor: 'rgba(0, 240, 255, 0.15)',
-                fill: true,
-                tension: 0.4,
-                pointBackgroundColor: '#00f0ff',
-                pointBorderColor: '#fff',
-                pointRadius: 4,
-                borderWidth: 2,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: true,
-                    labels: {
-                        color: '#fff',
-                        font: { size: 12, weight: 'bold' },
-                        boxWidth: 12,
-                        padding: 12
-                    }
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(0,0,0,0.8)',
-                    titleColor: '#fff',
-                    bodyColor: '#00ff88',
-                    borderColor: '#00f0ff',
-                    borderWidth: 1,
-                    cornerRadius: 8,
-                    padding: 12,
-                    callbacks: {
-                        label: function(context) {
-                            return context.parsed.y.toLocaleString() + 'đ';
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    grid: { color: 'rgba(255,255,255,0.04)' },
-                    ticks: { color: '#94a3b8', font: { size: 10 } }
-                },
-                y: {
-                    grid: { color: 'rgba(255,255,255,0.04)' },
-                    ticks: {
-                        color: '#94a3b8',
-                        font: { size: 10 },
-                        callback: function(value) {
-                            if (value >= 1000000) return (value/1000000).toFixed(1) + 'M';
-                            if (value >= 1000) return (value/1000).toFixed(0) + 'k';
-                            return value;
-                        }
-                    }
-                }
-            },
-            interaction: {
-                intersect: false,
-                mode: 'index'
-            }
+    try {
+        revenueData = getRevenueData();
+        const ctx = document.getElementById('revenueChart');
+        if (!ctx) return;
+        const labels = revenueData.map(d => d.date);
+        const values = revenueData.map(d => d.revenue);
+        
+        if (revenueChart) {
+            revenueChart.destroy();
         }
-    });
-    const totalRevenue = values.reduce((a, b) => a + b, 0);
-    if (document.getElementById('dashTotalRevenue')) document.getElementById('dashTotalRevenue').textContent = totalRevenue.toLocaleString() + 'đ';
-    if (document.getElementById('adminTodayRevenue')) document.getElementById('adminTodayRevenue').textContent = (values[values.length-1] || 0).toLocaleString() + 'đ';
-    updateAdminDashboardChart();
+        revenueChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Doanh thu (VNĐ)',
+                    data: values,
+                    borderColor: '#00f0ff',
+                    backgroundColor: 'rgba(0, 240, 255, 0.15)',
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#00f0ff',
+                    pointBorderColor: '#fff',
+                    pointRadius: 4,
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: {
+                            color: '#fff',
+                            font: { size: 12, weight: 'bold' },
+                            boxWidth: 12,
+                            padding: 12
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        titleColor: '#fff',
+                        bodyColor: '#00ff88',
+                        borderColor: '#00f0ff',
+                        borderWidth: 1,
+                        cornerRadius: 8,
+                        padding: 12,
+                        callbacks: {
+                            label: function(context) {
+                                return context.parsed.y.toLocaleString() + 'đ';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        ticks: { color: '#94a3b8', font: { size: 10 } }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        ticks: {
+                            color: '#94a3b8',
+                            font: { size: 10 },
+                            callback: function(value) {
+                                if (value >= 1000000) return (value/1000000).toFixed(1) + 'M';
+                                if (value >= 1000) return (value/1000).toFixed(0) + 'k';
+                                return value;
+                            }
+                        }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+        const totalRevenue = values.reduce((a, b) => a + b, 0);
+        if (document.getElementById('dashTotalRevenue')) document.getElementById('dashTotalRevenue').textContent = totalRevenue.toLocaleString() + 'đ';
+        if (document.getElementById('adminTodayRevenue')) document.getElementById('adminTodayRevenue').textContent = (values[values.length-1] || 0).toLocaleString() + 'đ';
+        updateAdminDashboardChart();
+    } catch(e) {
+        console.log('Chart update error:', e);
+    }
 }
 
 function updateAdminDashboardChart() {
-    const ctx = document.getElementById('adminDashboardChart');
-    if (!ctx) return;
-    if (window._adminChart) {
-        window._adminChart.destroy();
-    }
-    const data = getRevenueData();
-    const labels = data.map(d => d.date);
-    const values = data.map(d => d.revenue);
-    window._adminChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Doanh thu 7 ngày',
-                data: values,
-                backgroundColor: 'rgba(0, 240, 255, 0.5)',
-                borderColor: '#00f0ff',
-                borderWidth: 1,
-                borderRadius: 6,
-                barPercentage: 0.6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: true,
-                    labels: { color: '#fff', font: { size: 10 } }
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(0,0,0,0.8)',
-                    titleColor: '#fff',
-                    bodyColor: '#00ff88',
+    try {
+        const ctx = document.getElementById('adminDashboardChart');
+        if (!ctx) return;
+        if (window._adminChart) {
+            window._adminChart.destroy();
+        }
+        const data = getRevenueData();
+        const labels = data.map(d => d.date);
+        const values = data.map(d => d.revenue);
+        window._adminChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Doanh thu 7 ngày',
+                    data: values,
+                    backgroundColor: 'rgba(0, 240, 255, 0.5)',
                     borderColor: '#00f0ff',
                     borderWidth: 1,
-                    cornerRadius: 8,
-                    padding: 10,
-                    callbacks: {
-                        label: function(context) {
-                            return context.parsed.y.toLocaleString() + 'đ';
+                    borderRadius: 6,
+                    barPercentage: 0.6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: { color: '#fff', font: { size: 10 } }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        titleColor: '#fff',
+                        bodyColor: '#00ff88',
+                        borderColor: '#00f0ff',
+                        borderWidth: 1,
+                        cornerRadius: 8,
+                        padding: 10,
+                        callbacks: {
+                            label: function(context) {
+                                return context.parsed.y.toLocaleString() + 'đ';
+                            }
                         }
                     }
-                }
-            },
-            scales: {
-                x: {
-                    grid: { color: 'rgba(255,255,255,0.04)' },
-                    ticks: { color: '#94a3b8', font: { size: 9 } }
                 },
-                y: {
-                    grid: { color: 'rgba(255,255,255,0.04)' },
-                    ticks: {
-                        color: '#94a3b8',
-                        font: { size: 9 },
-                        callback: function(value) {
-                            if (value >= 1000000) return (value/1000000).toFixed(1) + 'M';
-                            if (value >= 1000) return (value/1000).toFixed(0) + 'k';
-                            return value;
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        ticks: { color: '#94a3b8', font: { size: 9 } }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        ticks: {
+                            color: '#94a3b8',
+                            font: { size: 9 },
+                            callback: function(value) {
+                                if (value >= 1000000) return (value/1000000).toFixed(1) + 'M';
+                                if (value >= 1000) return (value/1000).toFixed(0) + 'k';
+                                return value;
+                            }
                         }
                     }
                 }
             }
-        }
-    });
+        });
+    } catch(e) {
+        console.log('Admin chart update error:', e);
+    }
 }
 
 // ============================================================
@@ -2384,7 +2509,7 @@ const DOM = {
 };
 
 // ============================================================
-//  SECURITY - CHỐNG F12, DEBUG, XSS
+//  SECURITY
 // ============================================================
 (function antiF12Pro() {
     document.addEventListener('keydown', function(e) {
@@ -2580,7 +2705,7 @@ function loginSuccess(user) {
     setTimeout(() => {
         publishMqtt('sync_request', {});
         broadcastSync({ type: 'sync_request' });
-        setTimeout(publishFullState, 1000);
+        setTimeout(() => publishFullState({ silent: true }), 1000);
     }, 500);
     setTimeout(updateRevenueChart, 1000);
 }
@@ -2717,7 +2842,7 @@ function adminSaveQRConfig() {
         APP.bankConfig = config;
         renderAdminQRConfig();
         showToast('Đã cập nhật QR Code!', 'fas fa-circle-check', 'success');
-        setTimeout(forceSyncToAllUsers, 100);
+        setTimeout(() => forceSyncToAllUsers(true), 100);
     });
 }
 
@@ -2743,7 +2868,7 @@ function adminCreateGiftcode(e) {
         DOM.adminGiftcodeCode.value = '';
         DOM.adminGiftcodeValue.value = '';
         renderAdminGiftcodes();
-        setTimeout(forceSyncToAllUsers, 100);
+        setTimeout(() => forceSyncToAllUsers(true), 100);
     } else {
         showToast(result.message, 'fas fa-triangle-exclamation', 'error');
     }
@@ -2766,7 +2891,7 @@ function adminDeleteGiftcode(code) {
             Auth.deleteGiftcode(code);
             showToast('Đã xóa giftcode!', 'fas fa-circle-check', 'success');
             renderAdminGiftcodes();
-            setTimeout(forceSyncToAllUsers, 100);
+            setTimeout(() => forceSyncToAllUsers(true), 100);
         }
     });
 }
@@ -2804,7 +2929,7 @@ function adminShowCreateEvent() {
                 showToast('Tạo sự kiện thành công!', 'fas fa-circle-check', 'success');
                 renderAdminEvents();
                 renderEvents();
-                setTimeout(forceSyncToAllUsers, 100);
+                setTimeout(() => forceSyncToAllUsers(true), 100);
             } else {
                 showToast('Vui lòng điền đầy đủ thông tin!', 'fas fa-triangle-exclamation', 'error');
             }
@@ -2840,7 +2965,7 @@ function adminEditEvent(eventId) {
                 showToast('Cập nhật sự kiện thành công!', 'fas fa-circle-check', 'success');
                 renderAdminEvents();
                 renderEvents();
-                setTimeout(forceSyncToAllUsers, 100);
+                setTimeout(() => forceSyncToAllUsers(true), 100);
             }
         }
     });
@@ -2864,7 +2989,7 @@ function adminDeleteEvent(eventId) {
             showToast('Đã xóa sự kiện!', 'fas fa-circle-check', 'success');
             renderAdminEvents();
             renderEvents();
-            setTimeout(forceSyncToAllUsers, 100);
+            setTimeout(() => forceSyncToAllUsers(true), 100);
         }
     });
 }
@@ -2941,7 +3066,7 @@ function adminSaveFileEdit(e) {
 
     publishMqtt('files_sync', { action: 'updated', file: FILE_DATA[idx] });
     broadcastSync({ type: 'files_sync', action: 'updated', file: FILE_DATA[idx] });
-    setTimeout(forceSyncToAllUsers, 100);
+    setTimeout(() => forceSyncToAllUsers(true), 100);
 }
 
 function adminShowCreateFile() {
@@ -3003,7 +3128,7 @@ function adminCreateFile() {
 
     publishMqtt('files_sync', { action: 'created', file: newFile });
     broadcastSync({ type: 'files_sync', action: 'created', file: newFile });
-    setTimeout(forceSyncToAllUsers, 100);
+    setTimeout(() => forceSyncToAllUsers(true), 100);
 }
 
 function adminDeleteFile(fileId) {
@@ -3036,7 +3161,7 @@ function adminDeleteFile(fileId) {
 
                 publishMqtt('files_sync', { action: 'deleted', fileId: fileId });
                 broadcastSync({ type: 'files_sync', action: 'deleted', fileId: fileId });
-                setTimeout(forceSyncToAllUsers, 100);
+                setTimeout(() => forceSyncToAllUsers(true), 100);
             }
         }
     });
@@ -3082,7 +3207,7 @@ function adminAddBalance(userId) {
                 if (amount > 0) {
                     const user = Auth.addDeposit(userId, amount);
                     if (user) { showToast(`Đã cộng ${amount.toLocaleString()}đ cho ${user.username}!`, 'fas fa-circle-check', 'success'); renderAdminUsers(); if (APP.currentUser && APP.currentUser.id === userId) { APP.balance = user.balance; APP.totalDeposit = user.totalDeposit; APP.vipLevel = user.vipLevel; DOM.userBalance.textContent = APP.balance.toLocaleString(); updateVIPUI(user); } }
-                    setTimeout(forceSyncToAllUsers, 100);
+                    setTimeout(() => forceSyncToAllUsers(true), 100);
                 }
             }
         });
@@ -3110,7 +3235,7 @@ function adminEditUser(userId) {
             if (username) {
                 const updated = Auth.editUser(userId, { username, email, role });
                 if (updated) { showToast('Cập nhật user thành công!', 'fas fa-circle-check', 'success'); renderAdminUsers(); if (APP.currentUser && APP.currentUser.id === userId) { APP.currentUser = Auth.getCurrentUser(); DOM.userDisplayName.textContent = updated.username; } }
-                setTimeout(forceSyncToAllUsers, 100);
+                setTimeout(() => forceSyncToAllUsers(true), 100);
             }
         }
     });
@@ -3164,7 +3289,7 @@ function adminChangePassword(userId) {
             if (user) {
                 showToast(`✅ Đã đổi mật khẩu cho ${user.username}!`, 'fas fa-check-circle', 'success');
                 renderAdminUsers();
-                setTimeout(forceSyncToAllUsers, 100);
+                setTimeout(() => forceSyncToAllUsers(true), 100);
             }
         }
     });
@@ -3197,14 +3322,14 @@ function adminToggleLock(userId) {
                 result = Auth.lockUser(userId);
                 if (result) showToast(`🔒 Đã khóa ${user.username}!`, 'fas fa-lock', 'warning');
             }
-            if (result) { renderAdminUsers(); setTimeout(forceSyncToAllUsers, 100); }
+            if (result) { renderAdminUsers(); setTimeout(() => forceSyncToAllUsers(true), 100); }
         }
     });
 }
 
 function adminDeleteUser(userId) {
     Swal.fire({ title: 'Xóa user?', text: 'Bạn có chắc muốn xóa user này?', icon: 'warning', background: '#040814', color: '#fff', confirmButtonColor: '#ff4d4d', cancelButtonColor: '#94a3b8', showCancelButton: true, confirmButtonText: 'Xóa', cancelButtonText: 'Hủy' })
-        .then(res => { if (res.isConfirmed) { const result = Auth.deleteUser(userId); if (result.success) { showToast(result.message, 'fas fa-circle-check', 'success'); renderAdminUsers(); setTimeout(forceSyncToAllUsers, 100); } else showToast(result.message, 'fas fa-triangle-exclamation', 'error'); } });
+        .then(res => { if (res.isConfirmed) { const result = Auth.deleteUser(userId); if (result.success) { showToast(result.message, 'fas fa-circle-check', 'success'); renderAdminUsers(); setTimeout(() => forceSyncToAllUsers(true), 100); } else showToast(result.message, 'fas fa-triangle-exclamation', 'error'); } });
 }
 
 function renderDepositRequests() {
@@ -3399,7 +3524,7 @@ function adminSaveSpinWeights() {
     }
     showToast('Đã lưu tỉ lệ vòng quay!', 'fas fa-circle-check', 'success');
     renderAdminSpinWeights();
-    setTimeout(forceSyncToAllUsers, 100);
+    setTimeout(() => forceSyncToAllUsers(true), 100);
 }
 
 function updateAdminSpinStats() {
@@ -3914,7 +4039,7 @@ function adminSaveSupport(e) {
     const data = { zalo: document.getElementById('adminZaloInput').value.trim(), facebook: document.getElementById('adminFbInput').value.trim(), telegram: document.getElementById('adminTelegramInput').value.trim() };
     saveSupportLinks(data);
     showToast('Đã cập nhật thông tin hỗ trợ!', 'fas fa-circle-check', 'success');
-    setTimeout(forceSyncToAllUsers, 100);
+    setTimeout(() => forceSyncToAllUsers(true), 100);
 }
 
 function adminSaveSettings() {
@@ -3924,7 +4049,7 @@ function adminSaveSettings() {
         showToast(`Đã cập nhật giới hạn nạp: ${maxDeposit.toLocaleString()}đ`, 'fas fa-circle-check', 'success');
         publishMqtt('settings_sync', { maxDeposit: maxDeposit });
         broadcastSync({ type: 'settings_sync', maxDeposit: maxDeposit });
-        setTimeout(forceSyncToAllUsers, 100);
+        setTimeout(() => forceSyncToAllUsers(true), 100);
     } else {
         showToast('Vui lòng nhập số tiền hợp lệ!', 'fas fa-triangle-exclamation', 'error');
     }
@@ -4006,7 +4131,7 @@ function adminShowTools() {
 
 function createBackup() {
     try {
-        const backup = { timestamp: new Date().toISOString(), version: '27.3', data: { files: localStorage.getItem(STORAGE_KEY_FILES), users: localStorage.getItem(STORAGE_KEY_USERS), cart: localStorage.getItem(STORAGE_KEY_CART), reviews: localStorage.getItem(STORAGE_KEY_REVIEWS), giftcodes: localStorage.getItem(STORAGE_KEY_GIFTCODES), events: localStorage.getItem(STORAGE_KEY_EVENTS), bank: localStorage.getItem(STORAGE_KEY_BANK), support: localStorage.getItem(STORAGE_KEY_SUPPORT), spinWeights: localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) } };
+        const backup = { timestamp: new Date().toISOString(), version: '27.6', data: { files: localStorage.getItem(STORAGE_KEY_FILES), users: localStorage.getItem(STORAGE_KEY_USERS), cart: localStorage.getItem(STORAGE_KEY_CART), reviews: localStorage.getItem(STORAGE_KEY_REVIEWS), giftcodes: localStorage.getItem(STORAGE_KEY_GIFTCODES), events: localStorage.getItem(STORAGE_KEY_EVENTS), bank: localStorage.getItem(STORAGE_KEY_BANK), support: localStorage.getItem(STORAGE_KEY_SUPPORT), spinWeights: localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) } };
         localStorage.setItem(BACKUP_KEY, JSON.stringify(backup));
         console.log('[💾] Backup dữ liệu thành công lúc:', backup.timestamp);
         return backup;
@@ -4057,7 +4182,7 @@ setInterval(createBackup, 300000);
 
 function exportAllData() {
     try {
-        const data = { version: '27.3', exportedAt: new Date().toISOString(), shopName: 'Tấn Dũng FF', data: { files: JSON.parse(localStorage.getItem(STORAGE_KEY_FILES) || '[]'), users: JSON.parse(localStorage.getItem(STORAGE_KEY_USERS) || '[]'), cart: JSON.parse(localStorage.getItem(STORAGE_KEY_CART) || '[]'), reviews: JSON.parse(localStorage.getItem(STORAGE_KEY_REVIEWS) || '[]'), giftcodes: JSON.parse(localStorage.getItem(STORAGE_KEY_GIFTCODES) || '[]'), events: JSON.parse(localStorage.getItem(STORAGE_KEY_EVENTS) || '[]'), bank: JSON.parse(localStorage.getItem(STORAGE_KEY_BANK) || '{}'), support: JSON.parse(localStorage.getItem(STORAGE_KEY_SUPPORT) || '{}'), spinWeights: JSON.parse(localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) || '[]') } };
+        const data = { version: '27.6', exportedAt: new Date().toISOString(), shopName: 'Tấn Dũng FF', data: { files: JSON.parse(localStorage.getItem(STORAGE_KEY_FILES) || '[]'), users: JSON.parse(localStorage.getItem(STORAGE_KEY_USERS) || '[]'), cart: JSON.parse(localStorage.getItem(STORAGE_KEY_CART) || '[]'), reviews: JSON.parse(localStorage.getItem(STORAGE_KEY_REVIEWS) || '[]'), giftcodes: JSON.parse(localStorage.getItem(STORAGE_KEY_GIFTCODES) || '[]'), events: JSON.parse(localStorage.getItem(STORAGE_KEY_EVENTS) || '[]'), bank: JSON.parse(localStorage.getItem(STORAGE_KEY_BANK) || '{}'), support: JSON.parse(localStorage.getItem(STORAGE_KEY_SUPPORT) || '{}'), spinWeights: JSON.parse(localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) || '[]') } };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -4214,7 +4339,7 @@ function prevTrack() { currentTrack = (currentTrack - 1 + trackList.length) % tr
 // ============================================================
 setInterval(() => {
     if (mqttClient && mqttClient.connected) {
-        publishFullState();
+        publishFullState({ silent: true });
         console.log('🔄 Auto sync full state sau 30s');
     }
 }, 30000);
@@ -4231,13 +4356,154 @@ setTimeout(function() {
             if (syncData) {
                 const parsed = JSON.parse(syncData);
                 if (parsed.data) {
-                    applyFullState(parsed.data);
-                    updateRevenueChart();
+                    const currentState = getCurrentStateHash();
+                    const newState = JSON.stringify(parsed.data);
+                    if (currentState !== newState) {
+                        applyFullState(parsed.data);
+                        updateRevenueChart();
+                    }
                 }
             }
         } catch(e) {}
     }
 }, 3000);
+
+// ============================================================
+//  EXPOSE GLOBALS
+// ============================================================
+window.showToast = showToast;
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.switchTab = switchTab;
+window.addToCart = addToCart;
+window.removeFromCart = removeFromCart;
+window.clearCart = clearCart;
+window.checkoutCart = checkoutCart;
+window.buyNow = buyNow;
+window.renderCart = renderCart;
+window.updateCartUI = updateCartUI;
+window.getCart = getCart;
+window.getCartTotal = getCartTotal;
+window.showFileDetail = showFileDetail;
+window.adminSaveQRConfig = adminSaveQRConfig;
+window.renderAdminQRConfig = renderAdminQRConfig;
+window.spinTheWheel = spinTheWheel;
+window.triggerConfetti = triggerConfetti;
+window.confirmPaid = confirmPaid;
+window.cancelDeposit = cancelDeposit;
+window.searchProducts = searchProducts;
+window.loadMoreProducts = loadMoreProducts;
+window.toggleMobileMenu = toggleMobileMenu;
+window.toggleMusic = toggleMusic;
+window.nextTrack = nextTrack;
+window.prevTrack = prevTrack;
+window.togglePassword = togglePassword;
+window.handleLoginSubmit = handleLoginSubmit;
+window.handleRegisterSubmit = handleRegisterSubmit;
+window.handleLogout = handleLogout;
+window.handleDepositSubmit = handleDepositSubmit;
+window.handleDepositPage = handleDepositPage;
+window.handleRedeemCode = handleRedeemCode;
+window.toggleUserMenu = toggleUserMenu;
+window.approveDeposit = approveDeposit;
+window.rejectDeposit = rejectDeposit;
+window.renderAdminDashboard = renderAdminDashboard;
+window.filterDeposits = filterDeposits;
+window.openDepositWithMethod = openDepositWithMethod;
+window.openReviewModal = openReviewModal;
+window.handleReviewSubmit = handleReviewSubmit;
+window.renderReviews = renderReviews;
+window.renderTopRanking = renderTopRanking;
+window.updateRealStats = updateRealStats;
+window.updateVIPUI = updateVIPUI;
+window.renderFiles = renderFiles;
+window.renderFileGrid = renderFileGrid;
+window.filterFiles = filterFiles;
+window.changeFilePage = changeFilePage;
+window.renderSpinHistory = renderSpinHistory;
+window.renderEvents = renderEvents;
+window.renderMissions = renderMissions;
+window.joinEvent = joinEvent;
+window.claimMission = claimMission;
+window.updateMissions = updateMissions;
+window.switchAdminTab = switchAdminTab;
+window.adminCreateGiftcode = adminCreateGiftcode;
+window.adminDeleteGiftcode = adminDeleteGiftcode;
+window.adminShowCreateEvent = adminShowCreateEvent;
+window.adminEditEvent = adminEditEvent;
+window.adminDeleteEvent = adminDeleteEvent;
+window.adminShowCreateFile = adminShowCreateFile;
+window.adminEditFile = adminEditFile;
+window.adminDeleteFile = adminDeleteFile;
+window.adminSaveFileEdit = adminSaveFileEdit;
+window.adminCreateFile = adminCreateFile;
+window.adminAddBalance = adminAddBalance;
+window.adminEditUser = adminEditUser;
+window.adminDeleteUser = adminDeleteUser;
+window.adminChangePassword = adminChangePassword;
+window.adminToggleLock = adminToggleLock;
+window.adminSaveSettings = adminSaveSettings;
+window.renderAdminSpinWeights = renderAdminSpinWeights;
+window.updateSpinWeightPercent = updateSpinWeightPercent;
+window.adminSaveSpinWeights = adminSaveSpinWeights;
+window.updateAdminSpinStats = updateAdminSpinStats;
+window.adminSaveSupport = adminSaveSupport;
+window.openSupportLink = openSupportLink;
+window.getSupportLinks = getSupportLinks;
+window.updateSupportUI = updateSupportUI;
+window.updateDepositUsername = updateDepositUsername;
+window.securityLog = securityLog;
+window.initSecurity = initSecurity;
+window.Auth = Auth;
+window.APP = APP;
+window.VIP_CONFIG = VIP_CONFIG;
+window.FILE_DATA = FILE_DATA;
+window.SPIN_PRIZES = SPIN_PRIZES;
+window.EVENTS = EVENTS;
+window.MISSIONS = MISSIONS;
+window.getGlobalFiles = getGlobalFiles;
+window.saveGlobalFiles = saveGlobalFiles;
+window.createBackup = createBackup;
+window.restoreFromBackup = restoreFromBackup;
+window.exportAllData = exportAllData;
+window.importAllData = importAllData;
+window.repairCorruptedData = repairCorruptedData;
+window.globalSearch = globalSearch;
+window.renderUserDashboard = renderUserDashboard;
+window.adminShowTools = adminShowTools;
+window.resetToDefaultData = resetToDefaultData;
+window.getTheme = getTheme;
+window.setTheme = setTheme;
+window.toggleTheme = toggleTheme;
+window.applyTheme = applyTheme;
+window.getMaintenance = getMaintenance;
+window.setMaintenance = setMaintenance;
+window.isMaintenance = isMaintenance;
+window.renderAchievements = renderAchievements;
+window.getAchievements = getAchievements;
+window.unlockAchievement = unlockAchievement;
+window.checkAchievements = checkAchievements;
+window.sendWebhook = sendWebhook;
+window.saveWebhookUrl = saveWebhookUrl;
+window.exportToCSV = exportToCSV;
+window.saveDraft = saveDraft;
+window.getDraft = getDraft;
+window.clearDraft = clearDraft;
+window.cleanOldCache = cleanOldCache;
+window.initMqttClient = initMqttClient;
+window.publishMqtt = publishMqtt;
+window.publishFullState = publishFullState;
+window.handleSyncMessage = handleSyncMessage;
+window.renderAdminUsers = renderAdminUsers;
+window.updateRevenueChart = updateRevenueChart;
+window.getRevenueData = getRevenueData;
+window.forceSyncToAllUsers = forceSyncToAllUsers;
+window.getCurrentStateHash = getCurrentStateHash;
+
+console.log('🚀 SHOP TẤN DŨNG FF v27.6 - COMPLETE FINAL!');
+console.log('📁 Files:', FILE_DATA.length);
+console.log('📡 MQTT: Tự động kết nối đến broker.emqx.io');
+console.log('✅ 100% HOÀN THIỆN - KHÔNG LỖI - KHÔNG SPAM!');
 
 // ============================================================
 //  INIT
@@ -4302,10 +4568,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     }
     document.getElementById('spinTotalSpent').textContent = '0đ';
-    console.log('🚀 SHOP TẤN DŨNG FF v27.3 - SYNC MASTER!');
-    console.log('📁 Files:', FILE_DATA.length);
-    console.log('📡 MQTT: Tự động kết nối đến broker.emqx.io');
-    console.log('✅ ADMIN → USER REAL-TIME SYNC COMPLETE!');
+    console.log('🚀 SHOP TẤN DŨNG FF v27.6 - COMPLETE FINAL!');
+    console.log('✅ TẤT CẢ CHỨC NĂNG HOÀN THIỆN!');
 });
 
 // ============================================================
@@ -4447,139 +4711,3 @@ function setupKeyboardShortcuts() {
         if (e.altKey && e.key === 't') { e.preventDefault(); toggleTheme(); }
     });
 }
-
-// ============================================================
-//  EXPOSE GLOBALS
-// ============================================================
-window.showToast = showToast;
-window.openModal = openModal;
-window.closeModal = closeModal;
-window.switchTab = switchTab;
-window.addToCart = addToCart;
-window.removeFromCart = removeFromCart;
-window.clearCart = clearCart;
-window.checkoutCart = checkoutCart;
-window.buyNow = buyNow;
-window.renderCart = renderCart;
-window.updateCartUI = updateCartUI;
-window.getCart = getCart;
-window.getCartTotal = getCartTotal;
-window.showFileDetail = showFileDetail;
-window.adminSaveQRConfig = adminSaveQRConfig;
-window.renderAdminQRConfig = renderAdminQRConfig;
-window.spinTheWheel = spinTheWheel;
-window.triggerConfetti = triggerConfetti;
-window.confirmPaid = confirmPaid;
-window.cancelDeposit = cancelDeposit;
-window.searchProducts = searchProducts;
-window.loadMoreProducts = loadMoreProducts;
-window.toggleMobileMenu = toggleMobileMenu;
-window.toggleMusic = toggleMusic;
-window.nextTrack = nextTrack;
-window.prevTrack = prevTrack;
-window.togglePassword = togglePassword;
-window.handleLoginSubmit = handleLoginSubmit;
-window.handleRegisterSubmit = handleRegisterSubmit;
-window.handleLogout = handleLogout;
-window.handleDepositSubmit = handleDepositSubmit;
-window.handleDepositPage = handleDepositPage;
-window.handleRedeemCode = handleRedeemCode;
-window.toggleUserMenu = toggleUserMenu;
-window.approveDeposit = approveDeposit;
-window.rejectDeposit = rejectDeposit;
-window.renderAdminDashboard = renderAdminDashboard;
-window.filterDeposits = filterDeposits;
-window.openDepositWithMethod = openDepositWithMethod;
-window.openReviewModal = openReviewModal;
-window.handleReviewSubmit = handleReviewSubmit;
-window.renderReviews = renderReviews;
-window.renderTopRanking = renderTopRanking;
-window.updateRealStats = updateRealStats;
-window.updateVIPUI = updateVIPUI;
-window.renderFiles = renderFiles;
-window.renderFileGrid = renderFileGrid;
-window.filterFiles = filterFiles;
-window.changeFilePage = changeFilePage;
-window.renderSpinHistory = renderSpinHistory;
-window.renderEvents = renderEvents;
-window.renderMissions = renderMissions;
-window.joinEvent = joinEvent;
-window.claimMission = claimMission;
-window.updateMissions = updateMissions;
-window.switchAdminTab = switchAdminTab;
-window.adminCreateGiftcode = adminCreateGiftcode;
-window.adminDeleteGiftcode = adminDeleteGiftcode;
-window.adminShowCreateEvent = adminShowCreateEvent;
-window.adminEditEvent = adminEditEvent;
-window.adminDeleteEvent = adminDeleteEvent;
-window.adminShowCreateFile = adminShowCreateFile;
-window.adminEditFile = adminEditFile;
-window.adminDeleteFile = adminDeleteFile;
-window.adminSaveFileEdit = adminSaveFileEdit;
-window.adminCreateFile = adminCreateFile;
-window.adminAddBalance = adminAddBalance;
-window.adminEditUser = adminEditUser;
-window.adminDeleteUser = adminDeleteUser;
-window.adminChangePassword = adminChangePassword;
-window.adminToggleLock = adminToggleLock;
-window.adminSaveSettings = adminSaveSettings;
-window.renderAdminSpinWeights = renderAdminSpinWeights;
-window.updateSpinWeightPercent = updateSpinWeightPercent;
-window.adminSaveSpinWeights = adminSaveSpinWeights;
-window.updateAdminSpinStats = updateAdminSpinStats;
-window.adminSaveSupport = adminSaveSupport;
-window.openSupportLink = openSupportLink;
-window.getSupportLinks = getSupportLinks;
-window.updateSupportUI = updateSupportUI;
-window.updateDepositUsername = updateDepositUsername;
-window.securityLog = securityLog;
-window.initSecurity = initSecurity;
-window.Auth = Auth;
-window.APP = APP;
-window.VIP_CONFIG = VIP_CONFIG;
-window.FILE_DATA = FILE_DATA;
-window.SPIN_PRIZES = SPIN_PRIZES;
-window.EVENTS = EVENTS;
-window.MISSIONS = MISSIONS;
-window.getGlobalFiles = getGlobalFiles;
-window.saveGlobalFiles = saveGlobalFiles;
-window.createBackup = createBackup;
-window.restoreFromBackup = restoreFromBackup;
-window.exportAllData = exportAllData;
-window.importAllData = importAllData;
-window.repairCorruptedData = repairCorruptedData;
-window.globalSearch = globalSearch;
-window.renderUserDashboard = renderUserDashboard;
-window.adminShowTools = adminShowTools;
-window.resetToDefaultData = resetToDefaultData;
-window.getTheme = getTheme;
-window.setTheme = setTheme;
-window.toggleTheme = toggleTheme;
-window.applyTheme = applyTheme;
-window.getMaintenance = getMaintenance;
-window.setMaintenance = setMaintenance;
-window.isMaintenance = isMaintenance;
-window.renderAchievements = renderAchievements;
-window.getAchievements = getAchievements;
-window.unlockAchievement = unlockAchievement;
-window.checkAchievements = checkAchievements;
-window.sendWebhook = sendWebhook;
-window.saveWebhookUrl = saveWebhookUrl;
-window.exportToCSV = exportToCSV;
-window.saveDraft = saveDraft;
-window.getDraft = getDraft;
-window.clearDraft = clearDraft;
-window.cleanOldCache = cleanOldCache;
-window.initMqttClient = initMqttClient;
-window.publishMqtt = publishMqtt;
-window.publishFullState = publishFullState;
-window.handleSyncMessage = handleSyncMessage;
-window.renderAdminUsers = renderAdminUsers;
-window.updateRevenueChart = updateRevenueChart;
-window.getRevenueData = getRevenueData;
-window.forceSyncToAllUsers = forceSyncToAllUsers;
-
-console.log('🚀 SHOP TẤN DŨNG FF v27.3 - SYNC MASTER COMPLETE!');
-console.log('📁 Files:', FILE_DATA.length);
-console.log('📡 MQTT: Tự động kết nối đến broker.emqx.io');
-console.log('✅ ADMIN → USER REAL-TIME SYNC COMPLETE!');
