@@ -1,6 +1,6 @@
 // ============================================================
-//  SHOP TẤN DŨNG FF - COMPLETE FINAL v27.8
-//  100% HOÀN THIỆN - SYNC REAL-TIME - KHÔNG LỖI
+//  SHOP TẤN DŨNG FF - SYNC MASTER FIXED v27.9
+//  HOÀN CHỈNH NHẤT - FIX DUYỆT TIỀN - FIX HỦY YÊU CẦU
 // ============================================================
 
 // ============================================================
@@ -715,7 +715,7 @@ function handleSyncMessage(data) {
         }
     }
 
-    // === DEPOSIT ===
+    // === DEPOSIT - FIX CỘNG TIỀN ===
     if (action.includes('deposit')) {
         isProcessingSync = true;
         try {
@@ -724,10 +724,13 @@ function handleSyncMessage(data) {
                 const user = users.find(u => u.id === data.userId);
                 if (user) {
                     const amount = data.amount || 0;
+                    // Cộng tiền vào balance
                     user.balance = data.newBalance || (user.balance + amount);
                     user.totalDeposit = data.newTotalDeposit || (user.totalDeposit + amount);
                     if (data.newVipLevel !== undefined) user.vipLevel = data.newVipLevel;
                     if (data.newVipPoints !== undefined) user.vipPoints = data.newVipPoints;
+                    
+                    // Thêm lịch sử giao dịch
                     user.history = user.history || [];
                     user.history.unshift({
                         id: '#DEP-' + Date.now().toString(36).toUpperCase(),
@@ -736,8 +739,19 @@ function handleSyncMessage(data) {
                         status: 'Thành công',
                         time: new Date().toLocaleString('vi-VN')
                     });
+                    
+                    // Cập nhật deposit request status
+                    if (user.depositRequests) {
+                        const req = user.depositRequests.find(r => r.id === data.requestId);
+                        if (req) {
+                            req.status = 'approved';
+                            req.updatedAt = new Date().toISOString();
+                        }
+                    }
+                    
                     Auth.saveUsers(users);
                     
+                    // Cập nhật UI cho user hiện tại
                     if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
                         APP.balance = user.balance;
                         APP.totalDeposit = user.totalDeposit;
@@ -752,6 +766,7 @@ function handleSyncMessage(data) {
                         updateRevenueChart();
                     }
                     
+                    // Cập nhật admin UI
                     if (APP.isAdmin) {
                         renderDepositRequests();
                         renderAdminDashboard();
@@ -776,6 +791,13 @@ function handleSyncMessage(data) {
                         DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; 
                     }
                     showToast(`📢 Yêu cầu nạp ${(data.amount || 0).toLocaleString()}đ từ ${data.username || 'User'}!`, 'fas fa-bell', 'warning');
+                }
+            }
+            if (data.status === 'rejected' || data.action === 'rejected') {
+                if (APP.isAdmin) {
+                    renderDepositRequests();
+                    renderAdminDashboard();
+                    showToast(`📢 ${data.username || 'User'} đã bị từ chối!`, 'fas fa-bell', 'warning');
                 }
             }
         } catch(e) {
@@ -1077,6 +1099,7 @@ function handleSyncMessage(data) {
         isProcessingSync = true;
         try {
             if (data.action_type === 'approve_deposit') {
+                // Xử lý duyệt nạp tiền từ admin
                 if (data.userId) {
                     const users = Auth.getUsers();
                     const user = users.find(u => u.id === data.userId);
@@ -1084,10 +1107,36 @@ function handleSyncMessage(data) {
                         const amount = data.amount || 0;
                         user.balance = (user.balance || 0) + amount;
                         user.totalDeposit = (user.totalDeposit || 0) + amount;
+                        // Cập nhật VIP
+                        const newLevel = Auth.calculateVipLevel(user.totalDeposit);
+                        if (newLevel > (user.vipLevel || 0)) {
+                            user.vipLevel = newLevel;
+                            user.vipPoints = (user.vipPoints || 0) + (newLevel - (user.vipLevel || 0)) * 1000;
+                        }
+                        // Thêm lịch sử
+                        user.history = user.history || [];
+                        user.history.unshift({
+                            id: '#DEP-' + Date.now().toString(36).toUpperCase(),
+                            desc: `Nạp tiền (đã duyệt)`,
+                            amount: `+${amount.toLocaleString()}đ`,
+                            status: 'Thành công',
+                            time: new Date().toLocaleString('vi-VN')
+                        });
+                        // Cập nhật deposit request
+                        if (user.depositRequests) {
+                            const req = user.depositRequests.find(r => r.id === data.requestId);
+                            if (req) {
+                                req.status = 'approved';
+                                req.updatedAt = new Date().toISOString();
+                            }
+                        }
                         Auth.saveUsers(users);
+                        
                         if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
                             APP.balance = user.balance;
                             APP.totalDeposit = user.totalDeposit;
+                            APP.vipLevel = user.vipLevel;
+                            APP.vipPoints = user.vipPoints;
                             if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
                             if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
                             renderHistory();
@@ -1322,7 +1371,7 @@ function applyFullState(data) {
 }
 
 // ============================================================
-//  AUTH SYSTEM - FIX CỘNG TIỀN
+//  AUTH SYSTEM - FIX CỘNG TIỀN & HỦY YÊU CẦU
 // ============================================================
 const Auth = {
     getUsers() {
@@ -1346,6 +1395,13 @@ const Auth = {
     getUserById(userId) {
         const users = this.getUsers();
         return users.find(u => u.id === userId) || null;
+    },
+    calculateVipLevel(totalDeposit) {
+        let level = 0;
+        for (let i = VIP_CONFIG.length - 1; i >= 0; i--) {
+            if (totalDeposit >= VIP_CONFIG[i].minDeposit) { level = i; break; }
+        }
+        return level;
     },
     
     login(username, password, remember = true) {
@@ -1493,14 +1549,6 @@ const Auth = {
         return user.purchasedFiles.some(f => f.fileId === fileId);
     },
     
-    calculateVipLevel(totalDeposit) {
-        let level = 0;
-        for (let i = VIP_CONFIG.length - 1; i >= 0; i--) {
-            if (totalDeposit >= VIP_CONFIG[i].minDeposit) { level = i; break; }
-        }
-        return level;
-    },
-    
     getVipInfo(user) {
         const level = user.vipLevel || 0;
         const config = VIP_CONFIG[level] || VIP_CONFIG[0];
@@ -1578,7 +1626,7 @@ const Auth = {
         };
         user.depositRequests.push(request);
         this.saveUsers(users);
-        const syncData = { status: 'pending', userId: user.id, username: user.username, amount: amount, method: method };
+        const syncData = { status: 'pending', userId: user.id, username: user.username, amount: amount, method: method, requestId: request.id };
         publishMqtt('deposit', syncData);
         broadcastSync({ type: 'deposit', ...syncData });
         sendWebhook('deposit_request', { userId, username: user.username, amount, method });
@@ -1598,9 +1646,12 @@ const Auth = {
         const users = this.getUsers();
         const all = [];
         users.forEach(user => {
-            if (user.depositRequests) {
+            if (user.depositRequests && Array.isArray(user.depositRequests)) {
                 user.depositRequests.forEach(req => {
-                    all.push({ ...req, userEmail: user.email, userVip: user.vipLevel || 0 });
+                    // Chỉ lấy các request có status hợp lệ
+                    if (req.status === 'pending' || req.status === 'approved' || req.status === 'rejected') {
+                        all.push({ ...req, userEmail: user.email, userVip: user.vipLevel || 0 });
+                    }
                 });
             }
         });
@@ -1608,13 +1659,14 @@ const Auth = {
         return all;
     },
     
+    // FIX: APPROVE DEPOSIT - CỘNG TIỀN CHÍNH XÁC
     approveDeposit(requestId) {
         const users = this.getUsers();
         let foundUser = null, foundRequest = null, foundIndex = -1;
         for (let i = 0; i < users.length; i++) {
             const user = users[i];
-            if (user.depositRequests) {
-                const idx = user.depositRequests.findIndex(r => r.id === requestId);
+            if (user.depositRequests && Array.isArray(user.depositRequests)) {
+                const idx = user.depositRequests.findIndex(r => r.id === requestId && r.status === 'pending');
                 if (idx !== -1) {
                     foundUser = user;
                     foundRequest = user.depositRequests[idx];
@@ -1624,18 +1676,21 @@ const Auth = {
             }
         }
         if (!foundRequest) {
-            showToast('❌ Không tìm thấy yêu cầu!', 'fas fa-times-circle', 'error');
+            showToast('❌ Không tìm thấy yêu cầu chờ duyệt!', 'fas fa-times-circle', 'error');
             return null;
         }
         
+        // Cập nhật trạng thái
         foundRequest.status = 'approved';
         foundRequest.updatedAt = new Date().toISOString();
         const amount = foundRequest.amount;
         
+        // CỘNG TIỀN VÀO TÀI KHOẢN USER
         const oldBalance = foundUser.balance || 0;
         foundUser.balance = oldBalance + amount;
         foundUser.totalDeposit = (foundUser.totalDeposit || 0) + amount;
         
+        // Cập nhật VIP
         const newLevel = this.calculateVipLevel(foundUser.totalDeposit);
         if (newLevel > (foundUser.vipLevel || 0)) {
             const bonusPoints = (newLevel - (foundUser.vipLevel || 0)) * 1000;
@@ -1643,6 +1698,7 @@ const Auth = {
             foundUser.vipLevel = newLevel;
         }
         
+        // Thêm lịch sử
         foundUser.history = foundUser.history || [];
         foundUser.history.unshift({
             id: '#DEP-' + Date.now().toString(36).toUpperCase(),
@@ -1652,15 +1708,19 @@ const Auth = {
             time: new Date().toLocaleString('vi-VN')
         });
         
+        // Lưu users
         this.saveUsers(users);
         
+        // Gửi webhook
         sendWebhook('deposit_approved', { userId: foundUser.id, username: foundUser.username, amount: amount });
         
+        // Gửi sync data
         const syncData = {
             status: 'approved',
             userId: foundUser.id,
             username: foundUser.username,
             amount: amount,
+            requestId: requestId,
             newBalance: foundUser.balance,
             newTotalDeposit: foundUser.totalDeposit,
             newVipLevel: foundUser.vipLevel,
@@ -1668,9 +1728,22 @@ const Auth = {
         };
         publishMqtt('deposit_updated', syncData);
         broadcastSync({ type: 'deposit_updated', ...syncData });
-        publishMqtt('admin_action', { action_type: 'approve_deposit', userId: foundUser.id, username: foundUser.username, amount: amount });
-        broadcastSync({ type: 'admin_action', action_type: 'approve_deposit', userId: foundUser.id, username: foundUser.username, amount: amount });
+        publishMqtt('admin_action', { 
+            action_type: 'approve_deposit', 
+            userId: foundUser.id, 
+            username: foundUser.username, 
+            amount: amount,
+            requestId: requestId
+        });
+        broadcastSync({ type: 'admin_action', 
+            action_type: 'approve_deposit', 
+            userId: foundUser.id, 
+            username: foundUser.username, 
+            amount: amount,
+            requestId: requestId
+        });
         
+        // Cập nhật UI cho user hiện tại nếu là user được duyệt
         const current = this.getCurrentUser();
         if (current && current.id === foundUser.id) {
             current.balance = foundUser.balance;
@@ -1694,6 +1767,7 @@ const Auth = {
             updateRevenueChart();
         }
         
+        // Cập nhật admin UI
         if (APP.isAdmin) {
             setTimeout(() => {
                 renderDepositRequests();
@@ -1710,36 +1784,71 @@ const Auth = {
             }, 10);
         }
         
+        // FORCE SYNC NGAY LẬP TỨC
         setTimeout(() => forceSyncToAllUsers(true), 200);
         return foundRequest;
     },
     
+    // FIX: REJECT DEPOSIT
     rejectDeposit(requestId, reason = '') {
         const users = this.getUsers();
         let foundRequest = null, foundUser = null;
         for (const user of users) {
-            if (user.depositRequests) {
-                const idx = user.depositRequests.findIndex(r => r.id === requestId);
+            if (user.depositRequests && Array.isArray(user.depositRequests)) {
+                const idx = user.depositRequests.findIndex(r => r.id === requestId && r.status === 'pending');
                 if (idx !== -1) {
                     foundRequest = user.depositRequests[idx];
                     foundUser = user;
                     foundRequest.status = 'rejected';
                     foundRequest.note = reason || 'Bị từ chối';
+                    foundRequest.updatedAt = new Date().toISOString();
                     break;
                 }
             }
         }
-        if (!foundRequest) return null;
+        if (!foundRequest) {
+            showToast('❌ Không tìm thấy yêu cầu!', 'fas fa-times-circle', 'error');
+            return null;
+        }
         this.saveUsers(users);
-        const syncData = { status: 'rejected', userId: foundUser.id, username: foundUser.username, amount: foundRequest.amount, reason: reason };
+        const syncData = { 
+            status: 'rejected', 
+            userId: foundUser.id, 
+            username: foundUser.username, 
+            amount: foundRequest.amount, 
+            reason: reason,
+            requestId: requestId
+        };
         publishMqtt('deposit_updated', syncData);
         broadcastSync({ type: 'deposit_updated', ...syncData });
-        publishMqtt('admin_action', { action_type: 'reject_deposit', userId: foundUser.id, username: foundUser.username, amount: foundRequest.amount });
-        broadcastSync({ type: 'admin_action', action_type: 'reject_deposit', userId: foundUser.id, username: foundUser.username, amount: foundRequest.amount });
+        publishMqtt('admin_action', { 
+            action_type: 'reject_deposit', 
+            userId: foundUser.id, 
+            username: foundUser.username, 
+            amount: foundRequest.amount,
+            requestId: requestId
+        });
+        broadcastSync({ type: 'admin_action', 
+            action_type: 'reject_deposit', 
+            userId: foundUser.id, 
+            username: foundUser.username, 
+            amount: foundRequest.amount,
+            requestId: requestId
+        });
         sendWebhook('deposit_rejected', { userId: foundUser.id, username: foundUser.username, amount: foundRequest.amount, reason });
         if (APP.isAdmin) {
-            setTimeout(() => { renderDepositRequests(); renderAdminDashboard(); }, 10);
+            setTimeout(() => { 
+                renderDepositRequests(); 
+                renderAdminDashboard();
+                const pendingCount = this.getAllDepositRequests().filter(r => r.status === 'pending').length;
+                if (DOM.pendingBadge) { 
+                    DOM.pendingBadge.textContent = pendingCount; 
+                    DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; 
+                }
+                showToast(`❌ Đã từ chối ${foundRequest.amount.toLocaleString()}đ của ${foundUser.username}!`, 'fas fa-times-circle', 'error');
+            }, 10);
         }
+        setTimeout(() => forceSyncToAllUsers(true), 200);
         return foundRequest;
     },
     
@@ -1749,8 +1858,11 @@ const Auth = {
         user.depositRequests = user.depositRequests || [];
         const idx = user.depositRequests.findIndex(r => r.id === requestId);
         if (idx === -1) return null;
+        // Xóa hoàn toàn request đã hủy
         user.depositRequests.splice(idx, 1);
         this.saveUsers(users);
+        // Gửi sync để các thiết bị khác cập nhật
+        setTimeout(() => forceSyncToAllUsers(true), 100);
         return true;
     },
     
@@ -1857,7 +1969,9 @@ const Auth = {
             totalUsers++;
             totalBalance += user.balance || 0;
             if ((user.vipLevel || 0) > 0) vipUsers++;
-            if (user.depositRequests) pendingDeposits += user.depositRequests.filter(r => r.status === 'pending').length;
+            if (user.depositRequests && Array.isArray(user.depositRequests)) {
+                pendingDeposits += user.depositRequests.filter(r => r.status === 'pending').length;
+            }
             if (user.history) {
                 user.history.forEach(h => {
                     if (new Date(h.time).toDateString() === today) {
@@ -3042,7 +3156,7 @@ function togglePassword(inputId, icon) {
 }
 
 // ============================================================
-//  ADMIN FUNCTIONS - FIX SYNC
+//  ADMIN FUNCTIONS - ĐẦY ĐỦ
 // ============================================================
 function renderAdminQRConfig() {
     const config = getBankConfig();
@@ -4382,7 +4496,7 @@ function adminShowTools() {
 
 function createBackup() {
     try {
-        const backup = { timestamp: new Date().toISOString(), version: '27.8', data: { files: localStorage.getItem(STORAGE_KEY_FILES), users: localStorage.getItem(STORAGE_KEY_USERS), cart: localStorage.getItem(STORAGE_KEY_CART), reviews: localStorage.getItem(STORAGE_KEY_REVIEWS), giftcodes: localStorage.getItem(STORAGE_KEY_GIFTCODES), events: localStorage.getItem(STORAGE_KEY_EVENTS), bank: localStorage.getItem(STORAGE_KEY_BANK), support: localStorage.getItem(STORAGE_KEY_SUPPORT), spinWeights: localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) } };
+        const backup = { timestamp: new Date().toISOString(), version: '27.9', data: { files: localStorage.getItem(STORAGE_KEY_FILES), users: localStorage.getItem(STORAGE_KEY_USERS), cart: localStorage.getItem(STORAGE_KEY_CART), reviews: localStorage.getItem(STORAGE_KEY_REVIEWS), giftcodes: localStorage.getItem(STORAGE_KEY_GIFTCODES), events: localStorage.getItem(STORAGE_KEY_EVENTS), bank: localStorage.getItem(STORAGE_KEY_BANK), support: localStorage.getItem(STORAGE_KEY_SUPPORT), spinWeights: localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) } };
         localStorage.setItem(BACKUP_KEY, JSON.stringify(backup));
         console.log('[💾] Backup dữ liệu thành công lúc:', backup.timestamp);
         return backup;
@@ -4433,7 +4547,7 @@ setInterval(createBackup, 300000);
 
 function exportAllData() {
     try {
-        const data = { version: '27.8', exportedAt: new Date().toISOString(), shopName: 'Tấn Dũng FF', data: { files: JSON.parse(localStorage.getItem(STORAGE_KEY_FILES) || '[]'), users: JSON.parse(localStorage.getItem(STORAGE_KEY_USERS) || '[]'), cart: JSON.parse(localStorage.getItem(STORAGE_KEY_CART) || '[]'), reviews: JSON.parse(localStorage.getItem(STORAGE_KEY_REVIEWS) || '[]'), giftcodes: JSON.parse(localStorage.getItem(STORAGE_KEY_GIFTCODES) || '[]'), events: JSON.parse(localStorage.getItem(STORAGE_KEY_EVENTS) || '[]'), bank: JSON.parse(localStorage.getItem(STORAGE_KEY_BANK) || '{}'), support: JSON.parse(localStorage.getItem(STORAGE_KEY_SUPPORT) || '{}'), spinWeights: JSON.parse(localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) || '[]') } };
+        const data = { version: '27.9', exportedAt: new Date().toISOString(), shopName: 'Tấn Dũng FF', data: { files: JSON.parse(localStorage.getItem(STORAGE_KEY_FILES) || '[]'), users: JSON.parse(localStorage.getItem(STORAGE_KEY_USERS) || '[]'), cart: JSON.parse(localStorage.getItem(STORAGE_KEY_CART) || '[]'), reviews: JSON.parse(localStorage.getItem(STORAGE_KEY_REVIEWS) || '[]'), giftcodes: JSON.parse(localStorage.getItem(STORAGE_KEY_GIFTCODES) || '[]'), events: JSON.parse(localStorage.getItem(STORAGE_KEY_EVENTS) || '[]'), bank: JSON.parse(localStorage.getItem(STORAGE_KEY_BANK) || '{}'), support: JSON.parse(localStorage.getItem(STORAGE_KEY_SUPPORT) || '{}'), spinWeights: JSON.parse(localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) || '[]') } };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -4751,10 +4865,10 @@ window.getRevenueData = getRevenueData;
 window.forceSyncToAllUsers = forceSyncToAllUsers;
 window.getCurrentStateHash = getCurrentStateHash;
 
-console.log('🚀 SHOP TẤN DŨNG FF v27.8 - COMPLETE FINAL!');
+console.log('🚀 SHOP TẤN DŨNG FF v27.9 - SYNC MASTER FIXED!');
 console.log('📁 Files:', FILE_DATA.length);
 console.log('📡 MQTT: Tự động kết nối đến broker.emqx.io');
-console.log('✅ 100% HOÀN THIỆN - KHÔNG LỖI - SYNC REAL-TIME!');
+console.log('✅ FIX DUYỆT TIỀN - FIX HỦY YÊU CẦU - HOÀN CHỈNH NHẤT!');
 
 // ============================================================
 //  INIT
@@ -4819,7 +4933,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     }
     document.getElementById('spinTotalSpent').textContent = '0đ';
-    console.log('🚀 SHOP TẤN DŨNG FF v27.8 - COMPLETE FINAL!');
+    console.log('🚀 SHOP TẤN DŨNG FF v27.9 - SYNC MASTER FIXED!');
     console.log('✅ TẤT CẢ CHỨC NĂNG HOÀN THIỆN!');
 });
 
