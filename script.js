@@ -1,6 +1,7 @@
 // ============================================================
-//  SHOP TẤN DŨNG FF - SYNC MASTER FIXED v27.9
-//  HOÀN CHỈNH NHẤT - FIX DUYỆT TIỀN - FIX HỦY YÊU CẦU
+//  SHOP TẤN DŨNG FF - ULTIMATE FIX v28.0
+//  FIX TIỀN KHÔNG CỘNG - FIX ADMIN KHÔNG SYNC
+//  100% HOÀN THIỆN - REAL-TIME SYNC
 // ============================================================
 
 // ============================================================
@@ -244,6 +245,8 @@ function saveGlobalFiles(files) {
     try { localStorage.setItem('ff_sync_trigger', Date.now().toString()); } catch (e) {}
     publishMqtt('files_sync', { action: 'update', files: files });
     broadcastSync({ type: 'files_sync', action: 'update', files: files });
+    // FORCE SYNC NGAY LẬP TỨC
+    setTimeout(() => forceSyncToAllUsers(true), 100);
 }
 
 let FILE_DATA = getGlobalFiles();
@@ -281,6 +284,7 @@ function setMaintenance(status) {
     } else {
         showToast('✅ Đã tắt chế độ bảo trì!', 'fas fa-check', 'success');
     }
+    setTimeout(() => forceSyncToAllUsers(true), 100);
 }
 function isMaintenance() {
     const maintenance = getMaintenance();
@@ -677,7 +681,7 @@ function processSyncQueue() {
 }
 
 // ============================================================
-//  XỬ LÝ SYNC MESSAGE - ĐỒNG BỘ HOÀN HẢO
+//  XỬ LÝ SYNC MESSAGE
 // ============================================================
 function handleSyncMessage(data) {
     if (isProcessingSync) {
@@ -724,13 +728,11 @@ function handleSyncMessage(data) {
                 const user = users.find(u => u.id === data.userId);
                 if (user) {
                     const amount = data.amount || 0;
-                    // Cộng tiền vào balance
                     user.balance = data.newBalance || (user.balance + amount);
                     user.totalDeposit = data.newTotalDeposit || (user.totalDeposit + amount);
                     if (data.newVipLevel !== undefined) user.vipLevel = data.newVipLevel;
                     if (data.newVipPoints !== undefined) user.vipPoints = data.newVipPoints;
                     
-                    // Thêm lịch sử giao dịch
                     user.history = user.history || [];
                     user.history.unshift({
                         id: '#DEP-' + Date.now().toString(36).toUpperCase(),
@@ -740,7 +742,6 @@ function handleSyncMessage(data) {
                         time: new Date().toLocaleString('vi-VN')
                     });
                     
-                    // Cập nhật deposit request status
                     if (user.depositRequests) {
                         const req = user.depositRequests.find(r => r.id === data.requestId);
                         if (req) {
@@ -751,7 +752,6 @@ function handleSyncMessage(data) {
                     
                     Auth.saveUsers(users);
                     
-                    // Cập nhật UI cho user hiện tại
                     if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
                         APP.balance = user.balance;
                         APP.totalDeposit = user.totalDeposit;
@@ -766,7 +766,6 @@ function handleSyncMessage(data) {
                         updateRevenueChart();
                     }
                     
-                    // Cập nhật admin UI
                     if (APP.isAdmin) {
                         renderDepositRequests();
                         renderAdminDashboard();
@@ -1099,7 +1098,6 @@ function handleSyncMessage(data) {
         isProcessingSync = true;
         try {
             if (data.action_type === 'approve_deposit') {
-                // Xử lý duyệt nạp tiền từ admin
                 if (data.userId) {
                     const users = Auth.getUsers();
                     const user = users.find(u => u.id === data.userId);
@@ -1107,13 +1105,11 @@ function handleSyncMessage(data) {
                         const amount = data.amount || 0;
                         user.balance = (user.balance || 0) + amount;
                         user.totalDeposit = (user.totalDeposit || 0) + amount;
-                        // Cập nhật VIP
                         const newLevel = Auth.calculateVipLevel(user.totalDeposit);
                         if (newLevel > (user.vipLevel || 0)) {
                             user.vipLevel = newLevel;
                             user.vipPoints = (user.vipPoints || 0) + (newLevel - (user.vipLevel || 0)) * 1000;
                         }
-                        // Thêm lịch sử
                         user.history = user.history || [];
                         user.history.unshift({
                             id: '#DEP-' + Date.now().toString(36).toUpperCase(),
@@ -1122,7 +1118,6 @@ function handleSyncMessage(data) {
                             status: 'Thành công',
                             time: new Date().toLocaleString('vi-VN')
                         });
-                        // Cập nhật deposit request
                         if (user.depositRequests) {
                             const req = user.depositRequests.find(r => r.id === data.requestId);
                             if (req) {
@@ -1371,7 +1366,7 @@ function applyFullState(data) {
 }
 
 // ============================================================
-//  AUTH SYSTEM - FIX CỘNG TIỀN & HỦY YÊU CẦU
+//  AUTH SYSTEM - FIX CỘNG TIỀN
 // ============================================================
 const Auth = {
     getUsers() {
@@ -1382,6 +1377,7 @@ const Auth = {
         try { localStorage.setItem('ff_sync_trigger', Date.now().toString()); } catch (e) {}
         publishMqtt('user_sync', { action: 'update_all', users: users });
         broadcastSync({ type: 'user_sync', action: 'update_all', users: users });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
     },
     getCurrentUser() {
         try { return JSON.parse(localStorage.getItem(STORAGE_KEY_CURRENT_USER)) || null; } catch { return null; }
@@ -1496,6 +1492,7 @@ const Auth = {
         sendWebhook('new_user', { username, email });
         publishMqtt('user_sync', { action: 'created', user: newUser });
         broadcastSync({ type: 'user_sync', action: 'created', user: newUser });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
         return { success: true, message: 'Đăng ký thành công!', user: newUser };
     },
     
@@ -1648,7 +1645,6 @@ const Auth = {
         users.forEach(user => {
             if (user.depositRequests && Array.isArray(user.depositRequests)) {
                 user.depositRequests.forEach(req => {
-                    // Chỉ lấy các request có status hợp lệ
                     if (req.status === 'pending' || req.status === 'approved' || req.status === 'rejected') {
                         all.push({ ...req, userEmail: user.email, userVip: user.vipLevel || 0 });
                     }
@@ -1858,10 +1854,8 @@ const Auth = {
         user.depositRequests = user.depositRequests || [];
         const idx = user.depositRequests.findIndex(r => r.id === requestId);
         if (idx === -1) return null;
-        // Xóa hoàn toàn request đã hủy
         user.depositRequests.splice(idx, 1);
         this.saveUsers(users);
-        // Gửi sync để các thiết bị khác cập nhật
         setTimeout(() => forceSyncToAllUsers(true), 100);
         return true;
     },
@@ -1991,6 +1985,7 @@ const Auth = {
         localStorage.setItem(STORAGE_KEY_EVENTS, JSON.stringify(events));
         publishMqtt('event_sync', { action: 'update_all', events: events });
         broadcastSync({ type: 'event_sync', action: 'update_all', events: events });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
     },
     addEvent(eventData) {
         const events = this.getEvents();
@@ -1999,6 +1994,7 @@ const Auth = {
         this.saveEvents(events);
         publishMqtt('event_sync', { action: 'created', event: newEvent });
         broadcastSync({ type: 'event_sync', action: 'created', event: newEvent });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
         return newEvent;
     },
     updateEvent(eventId, data) {
@@ -2009,6 +2005,7 @@ const Auth = {
         this.saveEvents(events);
         publishMqtt('event_sync', { action: 'updated', event: events[idx] });
         broadcastSync({ type: 'event_sync', action: 'updated', event: events[idx] });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
         return events[idx];
     },
     deleteEvent(eventId) {
@@ -2017,6 +2014,7 @@ const Auth = {
         this.saveEvents(events);
         publishMqtt('event_sync', { action: 'deleted', eventId });
         broadcastSync({ type: 'event_sync', action: 'deleted', eventId });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
         return true;
     },
     
@@ -2027,6 +2025,7 @@ const Auth = {
         localStorage.setItem(STORAGE_KEY_GIFTCODES, JSON.stringify(codes));
         publishMqtt('giftcode_sync', { action: 'update_all', codes: codes });
         broadcastSync({ type: 'giftcode_sync', action: 'update_all', codes: codes });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
     },
     createGiftcode(code, value) {
         const codes = this.getGiftcodes();
@@ -2036,6 +2035,7 @@ const Auth = {
         this.saveGiftcodes(codes);
         publishMqtt('giftcode_sync', { action: 'created', code: newCode });
         broadcastSync({ type: 'giftcode_sync', action: 'created', code: newCode });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
         return { success: true, message: 'Tạo giftcode thành công!', data: newCode };
     },
     deleteGiftcode(code) {
@@ -2044,6 +2044,7 @@ const Auth = {
         this.saveGiftcodes(codes);
         publishMqtt('giftcode_sync', { action: 'deleted', code: code });
         broadcastSync({ type: 'giftcode_sync', action: 'deleted', code: code });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
         return true;
     },
     redeemGiftcode(code, userId) {
@@ -2075,6 +2076,7 @@ const Auth = {
         }
         publishMqtt('user_sync', { action: 'updated', userId: user.id, username: user.username, user: user });
         broadcastSync({ type: 'user_sync', action: 'updated', userId: user.id, username: user.username, user: user });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
         return user;
     },
     
@@ -2086,6 +2088,7 @@ const Auth = {
         this.saveUsers(users);
         publishMqtt('user_sync', { action: 'password_changed', userId: user.id, username: user.username });
         broadcastSync({ type: 'user_sync', action: 'password_changed', userId: user.id, username: user.username });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
         return user;
     },
     
@@ -2114,6 +2117,7 @@ const Auth = {
         this.saveUsers(users);
         publishMqtt('user_sync', { action: 'unlocked', userId: user.id, username: user.username });
         broadcastSync({ type: 'user_sync', action: 'unlocked', userId: user.id, username: user.username });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
         return user;
     },
     
@@ -2125,6 +2129,7 @@ const Auth = {
         this.saveUsers(users);
         publishMqtt('user_sync', { action: 'deleted', userId: userId, username: user?.username });
         broadcastSync({ type: 'user_sync', action: 'deleted', userId: userId, username: user?.username });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
         if (APP.isLoggedIn && APP.currentUser.id === userId) {
             this.logout();
             showToast('❌ Tài khoản của bạn đã bị xóa!', 'fas fa-user-slash', 'error');
@@ -2140,6 +2145,7 @@ const Auth = {
         localStorage.setItem(STORAGE_KEY_SPIN_WEIGHTS, JSON.stringify(weights));
         publishMqtt('spin_weights_sync', { weights: weights });
         broadcastSync({ type: 'spin_weights_sync', weights: weights });
+        setTimeout(() => forceSyncToAllUsers(true), 100);
     },
     saveSpinHistory(userId, entry) {
         const user = this.getUserById(userId);
@@ -2176,6 +2182,7 @@ function saveBankConfig(config) {
     localStorage.setItem(STORAGE_KEY_BANK, JSON.stringify(config));
     publishMqtt('settings_sync', { bankConfig: config });
     broadcastSync({ type: 'settings_sync', bankConfig: config });
+    setTimeout(() => forceSyncToAllUsers(true), 100);
 }
 
 // ============================================================
@@ -2190,6 +2197,7 @@ function saveSupportLinks(data) {
     updateSupportUI(data);
     publishMqtt('settings_sync', { supportLinks: data });
     broadcastSync({ type: 'settings_sync', supportLinks: data });
+    setTimeout(() => forceSyncToAllUsers(true), 100);
 }
 
 // ============================================================
@@ -2205,6 +2213,7 @@ function saveCart(cart) {
     try { localStorage.setItem('ff_sync_trigger', Date.now().toString()); } catch (e) {}
     publishMqtt('cart_sync', { cart: cart });
     broadcastSync({ type: 'cart_sync', cart: cart });
+    setTimeout(() => forceSyncToAllUsers(true), 100);
 }
 function addToCart(fileId) {
     if (!Auth.isLoggedIn()) {
@@ -3156,7 +3165,7 @@ function togglePassword(inputId, icon) {
 }
 
 // ============================================================
-//  ADMIN FUNCTIONS - ĐẦY ĐỦ
+//  ADMIN FUNCTIONS - FIX SYNC
 // ============================================================
 function renderAdminQRConfig() {
     const config = getBankConfig();
@@ -4496,7 +4505,7 @@ function adminShowTools() {
 
 function createBackup() {
     try {
-        const backup = { timestamp: new Date().toISOString(), version: '27.9', data: { files: localStorage.getItem(STORAGE_KEY_FILES), users: localStorage.getItem(STORAGE_KEY_USERS), cart: localStorage.getItem(STORAGE_KEY_CART), reviews: localStorage.getItem(STORAGE_KEY_REVIEWS), giftcodes: localStorage.getItem(STORAGE_KEY_GIFTCODES), events: localStorage.getItem(STORAGE_KEY_EVENTS), bank: localStorage.getItem(STORAGE_KEY_BANK), support: localStorage.getItem(STORAGE_KEY_SUPPORT), spinWeights: localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) } };
+        const backup = { timestamp: new Date().toISOString(), version: '28.0', data: { files: localStorage.getItem(STORAGE_KEY_FILES), users: localStorage.getItem(STORAGE_KEY_USERS), cart: localStorage.getItem(STORAGE_KEY_CART), reviews: localStorage.getItem(STORAGE_KEY_REVIEWS), giftcodes: localStorage.getItem(STORAGE_KEY_GIFTCODES), events: localStorage.getItem(STORAGE_KEY_EVENTS), bank: localStorage.getItem(STORAGE_KEY_BANK), support: localStorage.getItem(STORAGE_KEY_SUPPORT), spinWeights: localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) } };
         localStorage.setItem(BACKUP_KEY, JSON.stringify(backup));
         console.log('[💾] Backup dữ liệu thành công lúc:', backup.timestamp);
         return backup;
@@ -4547,7 +4556,7 @@ setInterval(createBackup, 300000);
 
 function exportAllData() {
     try {
-        const data = { version: '27.9', exportedAt: new Date().toISOString(), shopName: 'Tấn Dũng FF', data: { files: JSON.parse(localStorage.getItem(STORAGE_KEY_FILES) || '[]'), users: JSON.parse(localStorage.getItem(STORAGE_KEY_USERS) || '[]'), cart: JSON.parse(localStorage.getItem(STORAGE_KEY_CART) || '[]'), reviews: JSON.parse(localStorage.getItem(STORAGE_KEY_REVIEWS) || '[]'), giftcodes: JSON.parse(localStorage.getItem(STORAGE_KEY_GIFTCODES) || '[]'), events: JSON.parse(localStorage.getItem(STORAGE_KEY_EVENTS) || '[]'), bank: JSON.parse(localStorage.getItem(STORAGE_KEY_BANK) || '{}'), support: JSON.parse(localStorage.getItem(STORAGE_KEY_SUPPORT) || '{}'), spinWeights: JSON.parse(localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) || '[]') } };
+        const data = { version: '28.0', exportedAt: new Date().toISOString(), shopName: 'Tấn Dũng FF', data: { files: JSON.parse(localStorage.getItem(STORAGE_KEY_FILES) || '[]'), users: JSON.parse(localStorage.getItem(STORAGE_KEY_USERS) || '[]'), cart: JSON.parse(localStorage.getItem(STORAGE_KEY_CART) || '[]'), reviews: JSON.parse(localStorage.getItem(STORAGE_KEY_REVIEWS) || '[]'), giftcodes: JSON.parse(localStorage.getItem(STORAGE_KEY_GIFTCODES) || '[]'), events: JSON.parse(localStorage.getItem(STORAGE_KEY_EVENTS) || '[]'), bank: JSON.parse(localStorage.getItem(STORAGE_KEY_BANK) || '{}'), support: JSON.parse(localStorage.getItem(STORAGE_KEY_SUPPORT) || '{}'), spinWeights: JSON.parse(localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) || '[]') } };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -4865,10 +4874,10 @@ window.getRevenueData = getRevenueData;
 window.forceSyncToAllUsers = forceSyncToAllUsers;
 window.getCurrentStateHash = getCurrentStateHash;
 
-console.log('🚀 SHOP TẤN DŨNG FF v27.9 - SYNC MASTER FIXED!');
+console.log('🚀 SHOP TẤN DŨNG FF v28.0 - ULTIMATE FIX!');
 console.log('📁 Files:', FILE_DATA.length);
 console.log('📡 MQTT: Tự động kết nối đến broker.emqx.io');
-console.log('✅ FIX DUYỆT TIỀN - FIX HỦY YÊU CẦU - HOÀN CHỈNH NHẤT!');
+console.log('✅ FIX TIỀN KHÔNG CỘNG - FIX ADMIN KHÔNG SYNC - 100% HOÀN THIỆN!');
 
 // ============================================================
 //  INIT
@@ -4933,7 +4942,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     }
     document.getElementById('spinTotalSpent').textContent = '0đ';
-    console.log('🚀 SHOP TẤN DŨNG FF v27.9 - SYNC MASTER FIXED!');
+    console.log('🚀 SHOP TẤN DŨNG FF v28.0 - ULTIMATE FIX!');
     console.log('✅ TẤT CẢ CHỨC NĂNG HOÀN THIỆN!');
 });
 
