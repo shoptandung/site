@@ -1,7 +1,7 @@
-/* ====================================================
-   SHOP TẤN DŨNG FF - STYLE HOÀN CHỈNH v16.0
-   GIỎ HÀNG + QR ẢNH + XÓA DOWNLOAD + LINK TẢI
-   RESPONSIVE + CHỐNG PHÓNG TO
+/* ==================================================== 
+   SHOP TẤN DŨNG FF - STYLE HOÀN CHỈNH v16.0 
+   GIỎ HÀNG + QR ẢNH + XÓA DOWNLOAD + LINK TẢI 
+   RESPONSIVE + CHỐNG PHÓNG TO 
    ==================================================== */
 
 /* ===== CHỐNG PHÓNG TO MÀN HÌNH ===== */
@@ -115,6 +115,47 @@ body {
     transform: translate(-50%, -50%);
     z-index: 99998;
     transition: all 0.15s ease-out;
+}
+
+/* ===== SYNC STATUS ===== */
+#syncStatus {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    z-index: 99999;
+    background: rgba(0, 0, 0, 0.85);
+    color: #00ff88;
+    padding: 6px 18px;
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--primary);
+    backdrop-filter: blur(10px);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.15);
+}
+#syncStatus .fa-sync-alt {
+    animation: spinSync 2s linear infinite;
+}
+@keyframes spinSync {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+#syncStatusText {
+    color: var(--text-main);
+    font-weight: 400;
+}
+#syncStatus.connected {
+    border-color: #00ff88;
+}
+#syncStatus.disconnected {
+    border-color: #ff4d4d;
+}
+#syncStatus.disconnected .fa-sync-alt {
+    color: #ff4d4d;
 }
 
 /* ===== BACKGROUND & EFFECTS ===== */
@@ -3584,6 +3625,12 @@ header.scrolled {
     }
     .support-card i {
         font-size: 24px;
+    }
+    .support-card strong {
+        font-size: 12px;
+    }
+    .support-card span {
+        font-size: 10px;
     }
     
     /* History table */

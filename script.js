@@ -1,22 +1,42 @@
 // ============================================================
-//  SHOP TẤN DŨNG FF - ULTIMATE FIX v28.0
-//  FIX TIỀN KHÔNG CỘNG - FIX ADMIN KHÔNG SYNC
-//  100% HOÀN THIỆN - REAL-TIME SYNC
+//  SHOP TẤN DŨNG FF - ULTIMATE FIX v29.0
+//  FIX: KHÔNG SPAM TOAST - MQTT SYNC CHÍNH XÁC - CỘNG TIỀN ĐÚNG
 // ============================================================
 
 // ============================================================
 //  TOAST CONTROLLER - CHỐNG SPAM
 // ============================================================
 let toastDebounce = {};
+let _isSyncProcessing = false;
+let _lastToastTime = 0;
 
 function showToast(message, iconClass = 'fas fa-bell', type = '') {
     try {
-        const key = message.substring(0, 30);
+        // CHỈ HIỂN THỊ TOAST KHI CÓ HÀNH ĐỘNG THỰC SỰ TỪ USER
+        // Ẩn tất cả toast đồng bộ tự động
+        const syncKeywords = ['đồng bộ', 'sync', 'Đã tắt chế độ bảo trì', 'bảo trì'];
+        for (let kw of syncKeywords) {
+            if (message.toLowerCase().includes(kw)) {
+                if (_isSyncProcessing) {
+                    console.log('🔇 Ẩn toast đồng bộ:', message);
+                    return;
+                }
+            }
+        }
+
+        // Giới hạn tần suất toast
         const now = Date.now();
-        if (toastDebounce[key] && now - toastDebounce[key] < 3000) {
+        if (now - _lastToastTime < 1000) {
+            console.log('🔇 Toast quá nhanh, bỏ qua:', message);
+            return;
+        }
+
+        const key = message.substring(0, 30);
+        if (toastDebounce[key] && now - toastDebounce[key] < 5000) {
             return;
         }
         toastDebounce[key] = now;
+        _lastToastTime = now;
         
         const keys = Object.keys(toastDebounce);
         if (keys.length > 50) {
@@ -243,10 +263,11 @@ function getGlobalFiles() {
 function saveGlobalFiles(files) {
     localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(files));
     try { localStorage.setItem('ff_sync_trigger', Date.now().toString()); } catch (e) {}
-    publishMqtt('files_sync', { action: 'update', files: files });
-    broadcastSync({ type: 'files_sync', action: 'update', files: files });
-    // FORCE SYNC NGAY LẬP TỨC
-    setTimeout(() => forceSyncToAllUsers(true), 100);
+    // Chỉ gửi sync khi thực sự có thay đổi
+    if (!_isSyncProcessing) {
+        publishMqtt('files_sync', { action: 'update', files: files });
+        broadcastSync({ type: 'files_sync', action: 'update', files: files });
+    }
 }
 
 let FILE_DATA = getGlobalFiles();
@@ -275,16 +296,19 @@ function toggleTheme() {
 function getMaintenance() {
     try { return localStorage.getItem(STORAGE_KEY_MAINTENANCE) === 'true'; } catch { return false; }
 }
-function setMaintenance(status) {
+function setMaintenance(status, silent = false) {
     localStorage.setItem(STORAGE_KEY_MAINTENANCE, status ? 'true' : 'false');
-    publishMqtt('system_event', { event: 'maintenance', status: status });
-    broadcastSync({ type: 'system_event', event: 'maintenance', status: status });
-    if (status) {
-        showToast('🔧 Đã bật chế độ bảo trì!', 'fas fa-tools', 'warning');
-    } else {
-        showToast('✅ Đã tắt chế độ bảo trì!', 'fas fa-check', 'success');
+    if (!_isSyncProcessing) {
+        publishMqtt('system_event', { event: 'maintenance', status: status });
+        broadcastSync({ type: 'system_event', event: 'maintenance', status: status });
     }
-    setTimeout(() => forceSyncToAllUsers(true), 100);
+    if (!silent) {
+        if (status) {
+            showToast('🔧 Đã bật chế độ bảo trì!', 'fas fa-tools', 'warning');
+        } else {
+            showToast('✅ Đã tắt chế độ bảo trì!', 'fas fa-check', 'success');
+        }
+    }
 }
 function isMaintenance() {
     const maintenance = getMaintenance();
@@ -532,10 +556,11 @@ function broadcastSync(data) {
 }
 
 // ============================================================
-//  MQTT SYNC - REAL-TIME TOÀN CẦU
+//  MQTT SYNC - REAL-TIME TOÀN CẦU (FIX: CHỈ GỬI KHI CÓ THAY ĐỔI)
 // ============================================================
 let mqttClient = null;
 let mqttConnected = false;
+let _lastSentStateHash = '';
 
 function getMqttConfig() {
     return {
@@ -579,6 +604,7 @@ function initMqttClient() {
         mqttClient.on('connect', () => {
             mqttConnected = true;
             console.log('📡 MQTT Connected');
+            updateSyncStatus('Kết nối thành công', true);
             showToast('📡 Đã kết nối MQTT!', 'fas fa-wifi', 'success');
             const config = getMqttConfig();
             const topics = [
@@ -605,12 +631,13 @@ function initMqttClient() {
         mqttClient.on('message', (topic, message) => {
             try { const payload = JSON.parse(message.toString()); handleMqttMessage(topic, payload); } catch (e) {}
         });
-        mqttClient.on('error', () => { mqttConnected = false; setTimeout(initMqttClient, 5000); });
-        mqttClient.on('offline', () => { mqttConnected = false; });
-        mqttClient.on('close', () => { mqttConnected = false; setTimeout(initMqttClient, 5000); });
+        mqttClient.on('error', () => { mqttConnected = false; updateSyncStatus('Lỗi kết nối', false); setTimeout(initMqttClient, 5000); });
+        mqttClient.on('offline', () => { mqttConnected = false; updateSyncStatus('Mất kết nối', false); });
+        mqttClient.on('close', () => { mqttConnected = false; updateSyncStatus('Đã đóng kết nối', false); setTimeout(initMqttClient, 5000); });
         window.mqttClient = mqttClient;
     } catch (error) {
         console.error('📡 MQTT init error:', error);
+        updateSyncStatus('Không thể khởi tạo MQTT', false);
         setTimeout(initMqttClient, 5000);
     }
 }
@@ -634,6 +661,22 @@ function handleMqttMessage(topic, payload) {
     if (payload.sender === config.clientId) return;
     if (payload.timestamp && Date.now() - payload.timestamp > 30000) return;
     handleSyncMessage({ ...payload, action: topic.replace(`${baseTopic}/`, '') });
+}
+
+// ============================================================
+//  UPDATE SYNC STATUS UI
+// ============================================================
+function updateSyncStatus(text, connected) {
+    const statusEl = document.getElementById('syncStatus');
+    const textEl = document.getElementById('syncStatusText');
+    if (!statusEl || !textEl) return;
+    textEl.textContent = text;
+    statusEl.classList.remove('connected', 'disconnected');
+    if (connected) {
+        statusEl.classList.add('connected');
+    } else {
+        statusEl.classList.add('disconnected');
+    }
 }
 
 // ============================================================
@@ -681,7 +724,7 @@ function processSyncQueue() {
 }
 
 // ============================================================
-//  XỬ LÝ SYNC MESSAGE
+//  XỬ LÝ SYNC MESSAGE - FIX: KHÔNG SPAM TOAST
 // ============================================================
 function handleSyncMessage(data) {
     if (isProcessingSync) {
@@ -693,440 +736,69 @@ function handleSyncMessage(data) {
     const action = data.action || data.type || 'unknown';
     console.log('🔄 Sync:', action);
 
-    // Force sync
-    if (data.force === true || action === 'full_state_force') {
-        if (data.data) {
-            isProcessingSync = true;
-            try {
-                const currentState = getCurrentStateHash();
-                const newState = JSON.stringify(data.data);
-                if (currentState !== newState) {
-                    lastSyncTimestamp = data.timestamp || Date.now();
-                    lastStateHash = newState;
-                    applyFullState(data.data);
-                    updateRevenueChart();
-                    if (!data.silent) {
-                        showToast('🔄 Dữ liệu đã được đồng bộ!', 'fas fa-sync', 'success');
-                    }
-                }
-            } catch(e) {
-                console.error('Sync error:', e);
-            } finally {
-                isProcessingSync = false;
-                processSyncQueue();
-            }
-            return;
-        }
-    }
+    // Đánh dấu đang xử lý sync để ẩn toast
+    _isSyncProcessing = true;
 
-    // === DEPOSIT - FIX CỘNG TIỀN ===
-    if (action.includes('deposit')) {
-        isProcessingSync = true;
-        try {
-            if (data.status === 'approved' || data.action === 'approved') {
-                const users = Auth.getUsers();
-                const user = users.find(u => u.id === data.userId);
-                if (user) {
-                    const amount = data.amount || 0;
-                    user.balance = data.newBalance || (user.balance + amount);
-                    user.totalDeposit = data.newTotalDeposit || (user.totalDeposit + amount);
-                    if (data.newVipLevel !== undefined) user.vipLevel = data.newVipLevel;
-                    if (data.newVipPoints !== undefined) user.vipPoints = data.newVipPoints;
-                    
-                    user.history = user.history || [];
-                    user.history.unshift({
-                        id: '#DEP-' + Date.now().toString(36).toUpperCase(),
-                        desc: `Nạp tiền (đồng bộ)`,
-                        amount: `+${amount.toLocaleString()}đ`,
-                        status: 'Thành công',
-                        time: new Date().toLocaleString('vi-VN')
-                    });
-                    
-                    if (user.depositRequests) {
-                        const req = user.depositRequests.find(r => r.id === data.requestId);
-                        if (req) {
-                            req.status = 'approved';
-                            req.updatedAt = new Date().toISOString();
-                        }
-                    }
-                    
-                    Auth.saveUsers(users);
-                    
-                    if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
-                        APP.balance = user.balance;
-                        APP.totalDeposit = user.totalDeposit;
-                        APP.vipLevel = user.vipLevel;
-                        APP.vipPoints = user.vipPoints;
-                        if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
-                        if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
-                        renderHistory();
-                        updateVIPUI(user);
-                        showToast(`💰 Đã nhận ${amount.toLocaleString()}đ!`, 'fas fa-wallet', 'success');
-                        triggerConfetti();
+    try {
+        // Force sync
+        if (data.force === true || action === 'full_state_force') {
+            if (data.data) {
+                try {
+                    const currentState = getCurrentStateHash();
+                    const newState = JSON.stringify(data.data);
+                    if (currentState !== newState) {
+                        lastSyncTimestamp = data.timestamp || Date.now();
+                        lastStateHash = newState;
+                        applyFullState(data.data, true); // silent = true
                         updateRevenueChart();
-                    }
-                    
-                    if (APP.isAdmin) {
-                        renderDepositRequests();
-                        renderAdminDashboard();
-                        renderAdminUsers();
-                        const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
-                        if (DOM.pendingBadge) { 
-                            DOM.pendingBadge.textContent = pendingCount; 
-                            DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; 
+                        // CHỈ HIỂN THỊ TOAST KHI KHÔNG PHẢI SILENT
+                        if (!data.silent) {
+                            showToast('🔄 Dữ liệu đã được đồng bộ!', 'fas fa-sync', 'success');
                         }
                     }
-                    updateRealStats();
-                    lastSyncTimestamp = data.timestamp || Date.now();
+                } catch(e) {
+                    console.error('Sync error:', e);
+                } finally {
+                    _isSyncProcessing = false;
+                    processSyncQueue();
                 }
+                return;
             }
-            if (data.status === 'pending' || data.action === 'pending') {
-                if (APP.isAdmin) {
-                    renderDepositRequests();
-                    renderAdminDashboard();
-                    const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
-                    if (DOM.pendingBadge) { 
-                        DOM.pendingBadge.textContent = pendingCount; 
-                        DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; 
-                    }
-                    showToast(`📢 Yêu cầu nạp ${(data.amount || 0).toLocaleString()}đ từ ${data.username || 'User'}!`, 'fas fa-bell', 'warning');
-                }
-            }
-            if (data.status === 'rejected' || data.action === 'rejected') {
-                if (APP.isAdmin) {
-                    renderDepositRequests();
-                    renderAdminDashboard();
-                    showToast(`📢 ${data.username || 'User'} đã bị từ chối!`, 'fas fa-bell', 'warning');
-                }
-            }
-        } catch(e) {
-            console.error('Deposit sync error:', e);
-        } finally {
-            isProcessingSync = false;
-            processSyncQueue();
         }
-        return;
-    }
 
-    // === USER ===
-    if (action.includes('user')) {
-        isProcessingSync = true;
-        try {
-            if (APP.isAdmin) { renderAdminUsers(); renderAdminDashboard(); }
-            if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
-                if (data.action === 'locked') { 
-                    Auth.logout(); 
-                    showToast('🔒 Tài khoản bị khóa!', 'fas fa-lock', 'error'); 
-                    setTimeout(() => location.reload(), 2000); 
-                }
-                if (data.action === 'password_changed') { 
-                    showToast('🔑 Mật khẩu đã thay đổi! Đăng nhập lại.', 'fas fa-key', 'warning'); 
-                    setTimeout(() => { Auth.logout(); location.reload(); }, 3000); 
-                }
-                if (data.action === 'deleted') { 
-                    Auth.logout(); 
-                    showToast('❌ Tài khoản đã bị xóa!', 'fas fa-user-slash', 'error'); 
-                    setTimeout(() => location.reload(), 2000); 
-                }
-                if (data.action === 'updated' || data.action === 'unlocked') {
-                    const updatedUser = Auth.getUserById(data.userId);
-                    if (updatedUser) { 
-                        APP.balance = updatedUser.balance || 0; 
-                        APP.vipLevel = updatedUser.vipLevel || 0; 
-                        APP.vipPoints = updatedUser.vipPoints || 0; 
-                        if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString(); 
-                        updateVIPUI(updatedUser); 
-                    }
-                }
-            }
-            lastSyncTimestamp = data.timestamp || Date.now();
-        } catch(e) {
-            console.error('User sync error:', e);
-        } finally {
-            isProcessingSync = false;
-            processSyncQueue();
-        }
-        return;
-    }
-
-    // === FILES ===
-    if (action.includes('files')) {
-        isProcessingSync = true;
-        try {
-            let changed = false;
-            if (data.action === 'created' && data.file) {
-                FILE_DATA = getGlobalFiles();
-                if (!FILE_DATA.some(f => f.id === data.file.id)) { 
-                    FILE_DATA.push(data.file); 
-                    saveGlobalFiles(FILE_DATA);
-                    changed = true;
-                    showToast(`📁 Đã thêm file: ${data.file.name}`, 'fas fa-file', 'success');
-                }
-            }
-            if (data.action === 'updated' && data.file) {
-                FILE_DATA = getGlobalFiles();
-                const idx = FILE_DATA.findIndex(f => f.id === data.file.id);
-                if (idx !== -1) { 
-                    FILE_DATA[idx] = { ...FILE_DATA[idx], ...data.file }; 
-                    saveGlobalFiles(FILE_DATA);
-                    changed = true;
-                    showToast(`📁 Đã cập nhật: ${data.file.name}`, 'fas fa-file', 'success');
-                }
-            }
-            if (data.action === 'deleted' && data.fileId) {
-                FILE_DATA = getGlobalFiles();
-                const deleted = FILE_DATA.find(f => f.id === data.fileId);
-                FILE_DATA = FILE_DATA.filter(f => f.id !== data.fileId);
-                saveGlobalFiles(FILE_DATA);
-                changed = true;
-                if (deleted) showToast(`📁 Đã xóa: ${deleted.name}`, 'fas fa-trash', 'warning');
-            }
-            if (data.action === 'update' && data.files) { 
-                FILE_DATA = data.files; 
-                saveGlobalFiles(FILE_DATA);
-                changed = true;
-            }
-            if (changed) {
-                APP.files = [...FILE_DATA]; 
-                APP.filteredFiles = [...FILE_DATA];
-                renderFiles(); 
-                renderFileGrid();
-                if (APP.isAdmin) renderAdminFiles();
-                updateRealStats();
-            }
-            lastSyncTimestamp = data.timestamp || Date.now();
-        } catch(e) {
-            console.error('Files sync error:', e);
-        } finally {
-            isProcessingSync = false;
-            processSyncQueue();
-        }
-        return;
-    }
-
-    // === GIFTCODE ===
-    if (action.includes('giftcode')) {
-        isProcessingSync = true;
-        try {
-            if (data.action === 'created' && data.code) {
-                const codes = Auth.getGiftcodes();
-                if (!codes.some(c => c.code === data.code.code)) { 
-                    codes.push(data.code); 
-                    Auth.saveGiftcodes(codes);
-                    showToast(`🎫 Giftcode ${data.code.code} đã được tạo!`, 'fas fa-ticket', 'success');
-                }
-            }
-            if (data.action === 'deleted' && data.code) {
-                const codes = Auth.getGiftcodes();
-                Auth.saveGiftcodes(codes.filter(c => c.code !== data.code));
-                showToast(`🎫 Giftcode ${data.code} đã được xóa!`, 'fas fa-ticket', 'warning');
-            }
-            if (APP.isAdmin) renderAdminGiftcodes();
-            lastSyncTimestamp = data.timestamp || Date.now();
-        } catch(e) {
-            console.error('Giftcode sync error:', e);
-        } finally {
-            isProcessingSync = false;
-            processSyncQueue();
-        }
-        return;
-    }
-
-    // === EVENTS ===
-    if (action.includes('event')) {
-        isProcessingSync = true;
-        try {
-            if (data.action === 'created' && data.event) {
-                const events = Auth.getEvents();
-                if (!events.some(e => e.id === data.event.id)) { 
-                    events.push(data.event); 
-                    Auth.saveEvents(events);
-                    showToast(`📅 Sự kiện "${data.event.name}" đã được tạo!`, 'fas fa-calendar-day', 'success');
-                }
-            }
-            if (data.action === 'updated' && data.event) {
-                const events = Auth.getEvents();
-                const idx = events.findIndex(e => e.id === data.event.id);
-                if (idx !== -1) { 
-                    events[idx] = { ...events[idx], ...data.event }; 
-                    Auth.saveEvents(events);
-                    showToast(`📅 Sự kiện "${data.event.name}" đã được cập nhật!`, 'fas fa-calendar-day', 'success');
-                }
-            }
-            if (data.action === 'deleted' && data.eventId) {
-                const events = Auth.getEvents();
-                const deleted = events.find(e => e.id === data.eventId);
-                Auth.saveEvents(events.filter(e => e.id !== data.eventId));
-                if (deleted) showToast(`📅 Đã xóa sự kiện: ${deleted.name}`, 'fas fa-calendar-day', 'warning');
-            }
-            renderEvents();
-            if (APP.isAdmin) renderAdminEvents();
-            lastSyncTimestamp = data.timestamp || Date.now();
-        } catch(e) {
-            console.error('Events sync error:', e);
-        } finally {
-            isProcessingSync = false;
-            processSyncQueue();
-        }
-        return;
-    }
-
-    // === SPIN WEIGHTS ===
-    if (action.includes('spin')) {
-        isProcessingSync = true;
-        try {
-            if (data.weights) { 
-                Auth.saveSpinWeights(data.weights); 
-                if (APP.isAdmin) renderAdminSpinWeights(); 
-                showToast('🎡 Tỉ lệ vòng quay đã được cập nhật!', 'fas fa-dharmachakra', 'success');
-            }
-            lastSyncTimestamp = data.timestamp || Date.now();
-        } catch(e) {
-            console.error('Spin weights sync error:', e);
-        } finally {
-            isProcessingSync = false;
-            processSyncQueue();
-        }
-        return;
-    }
-
-    // === SETTINGS ===
-    if (action.includes('settings')) {
-        isProcessingSync = true;
-        try {
-            if (data.maxDeposit) APP.maxDeposit = data.maxDeposit;
-            if (data.bankConfig) { APP.bankConfig = data.bankConfig; if (APP.isAdmin) renderAdminQRConfig(); }
-            if (data.supportLinks) updateSupportUI(data.supportLinks);
-            showToast('⚙️ Cài đặt đã được đồng bộ!', 'fas fa-gear', 'success');
-            lastSyncTimestamp = data.timestamp || Date.now();
-        } catch(e) {
-            console.error('Settings sync error:', e);
-        } finally {
-            isProcessingSync = false;
-            processSyncQueue();
-        }
-        return;
-    }
-
-    // === CART ===
-    if (action.includes('cart') && data.cart) {
-        isProcessingSync = true;
-        try {
-            localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(data.cart));
-            updateCartUI(); renderCart();
-            lastSyncTimestamp = data.timestamp || Date.now();
-        } catch(e) {
-            console.error('Cart sync error:', e);
-        } finally {
-            isProcessingSync = false;
-            processSyncQueue();
-        }
-        return;
-    }
-
-    // === REVIEW ===
-    if (action.includes('review') && data.review) {
-        isProcessingSync = true;
-        try {
-            const reviews = Auth.getReviews();
-            if (!reviews.some(r => r.id === data.review.id)) { 
-                reviews.unshift(data.review); 
-                Auth.saveReviews(reviews); 
-                renderReviews(); 
-                showToast('⭐ Đã có đánh giá mới!', 'fas fa-star', 'success');
-            }
-            lastSyncTimestamp = data.timestamp || Date.now();
-        } catch(e) {
-            console.error('Review sync error:', e);
-        } finally {
-            isProcessingSync = false;
-            processSyncQueue();
-        }
-        return;
-    }
-
-    // === SYSTEM EVENT ===
-    if (action.includes('system') && data.event === 'maintenance') {
-        isProcessingSync = true;
-        try {
-            if (data.status !== undefined) setMaintenance(data.status);
-            if (data.message) showToast(`📢 ${data.message}`, 'fas fa-bullhorn', 'warning');
-            lastSyncTimestamp = data.timestamp || Date.now();
-        } catch(e) {
-            console.error('System event sync error:', e);
-        } finally {
-            isProcessingSync = false;
-            processSyncQueue();
-        }
-        return;
-    }
-
-    // === FULL STATE ===
-    if (action.includes('full') && data.data) {
-        isProcessingSync = true;
-        try {
-            const currentState = getCurrentStateHash();
-            const newState = JSON.stringify(data.data);
-            if (currentState !== newState) {
-                lastSyncTimestamp = data.timestamp || Date.now();
-                lastStateHash = newState;
-                applyFullState(data.data);
-                updateRevenueChart();
-                if (!data.silent) {
-                    showToast('🔄 Đã đồng bộ toàn bộ dữ liệu!', 'fas fa-sync', 'success');
-                }
-            }
-        } catch(e) {
-            console.error('Full state sync error:', e);
-        } finally {
-            isProcessingSync = false;
-            processSyncQueue();
-        }
-        return;
-    }
-
-    // === SYNC REQUEST ===
-    if (action.includes('sync_request')) { 
-        setTimeout(() => {
-            publishFullState({ silent: true });
-        }, 500); 
-        return;
-    }
-
-    // === ADMIN ACTION ===
-    if (action.includes('admin_action')) {
-        isProcessingSync = true;
-        try {
-            if (data.action_type === 'approve_deposit') {
-                if (data.userId) {
+        // === DEPOSIT - FIX CỘNG TIỀN CHÍNH XÁC ===
+        if (action.includes('deposit')) {
+            try {
+                if (data.status === 'approved' || data.action === 'approved') {
                     const users = Auth.getUsers();
                     const user = users.find(u => u.id === data.userId);
                     if (user) {
                         const amount = data.amount || 0;
-                        user.balance = (user.balance || 0) + amount;
-                        user.totalDeposit = (user.totalDeposit || 0) + amount;
-                        const newLevel = Auth.calculateVipLevel(user.totalDeposit);
-                        if (newLevel > (user.vipLevel || 0)) {
-                            user.vipLevel = newLevel;
-                            user.vipPoints = (user.vipPoints || 0) + (newLevel - (user.vipLevel || 0)) * 1000;
-                        }
+                        // Cập nhật balance
+                        user.balance = data.newBalance || (user.balance + amount);
+                        user.totalDeposit = data.newTotalDeposit || (user.totalDeposit + amount);
+                        if (data.newVipLevel !== undefined) user.vipLevel = data.newVipLevel;
+                        if (data.newVipPoints !== undefined) user.vipPoints = data.newVipPoints;
+                        
+                        // Thêm lịch sử
                         user.history = user.history || [];
                         user.history.unshift({
                             id: '#DEP-' + Date.now().toString(36).toUpperCase(),
-                            desc: `Nạp tiền (đã duyệt)`,
+                            desc: `Nạp tiền (đồng bộ từ admin)`,
                             amount: `+${amount.toLocaleString()}đ`,
                             status: 'Thành công',
                             time: new Date().toLocaleString('vi-VN')
                         });
+                        
+                        // Cập nhật trạng thái request
                         if (user.depositRequests) {
                             const req = user.depositRequests.find(r => r.id === data.requestId);
-                            if (req) {
-                                req.status = 'approved';
-                                req.updatedAt = new Date().toISOString();
-                            }
+                            if (req) req.status = 'approved';
                         }
+                        
                         Auth.saveUsers(users);
                         
+                        // Cập nhật UI cho user đang đăng nhập
                         if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
                             APP.balance = user.balance;
                             APP.totalDeposit = user.totalDeposit;
@@ -1136,52 +808,459 @@ function handleSyncMessage(data) {
                             if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
                             renderHistory();
                             updateVIPUI(user);
-                            showToast(`💰 Đã nhận ${amount.toLocaleString()}đ!`, 'fas fa-wallet', 'success');
-                            triggerConfetti();
+                            // Chỉ hiển thị toast khi user nhận tiền (không phải tự sync)
+                            if (!data.sender || data.sender !== mqttClient?.options?.clientId) {
+                                showToast(`💰 Đã nhận ${amount.toLocaleString()}đ từ admin!`, 'fas fa-wallet', 'success');
+                                triggerConfetti();
+                            }
                             updateRevenueChart();
+                        }
+                        
+                        // Cập nhật admin UI
+                        if (APP.isAdmin) {
+                            renderDepositRequests();
+                            renderAdminDashboard();
+                            renderAdminUsers();
+                            const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
+                            if (DOM.pendingBadge) {
+                                DOM.pendingBadge.textContent = pendingCount;
+                                DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`;
+                            }
+                            // Admin thấy thông báo duyệt thành công
+                            if (!data.sender || data.sender !== mqttClient?.options?.clientId) {
+                                showToast(`✅ Đã duyệt ${amount.toLocaleString()}đ cho ${user.username}!`, 'fas fa-check-circle', 'success');
+                            }
+                        }
+                        updateRealStats();
+                        lastSyncTimestamp = data.timestamp || Date.now();
+                    }
+                }
+                if (data.status === 'pending' || data.action === 'pending') {
+                    if (APP.isAdmin) {
+                        renderDepositRequests();
+                        renderAdminDashboard();
+                        const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
+                        if (DOM.pendingBadge) { 
+                            DOM.pendingBadge.textContent = pendingCount; 
+                            DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; 
+                        }
+                        showToast(`📢 Yêu cầu nạp ${(data.amount || 0).toLocaleString()}đ từ ${data.username || 'User'}!`, 'fas fa-bell', 'warning');
+                    }
+                }
+                if (data.status === 'rejected' || data.action === 'rejected') {
+                    if (APP.isAdmin) {
+                        renderDepositRequests();
+                        renderAdminDashboard();
+                        showToast(`📢 ${data.username || 'User'} đã bị từ chối!`, 'fas fa-bell', 'warning');
+                    }
+                }
+            } catch(e) {
+                console.error('Deposit sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
+            }
+            return;
+        }
+
+        // === USER ===
+        if (action.includes('user')) {
+            try {
+                if (APP.isAdmin) { renderAdminUsers(); renderAdminDashboard(); }
+                if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
+                    if (data.action === 'locked') { 
+                        Auth.logout(); 
+                        showToast('🔒 Tài khoản bị khóa!', 'fas fa-lock', 'error'); 
+                        setTimeout(() => location.reload(), 2000); 
+                    }
+                    if (data.action === 'password_changed') { 
+                        showToast('🔑 Mật khẩu đã thay đổi! Đăng nhập lại.', 'fas fa-key', 'warning'); 
+                        setTimeout(() => { Auth.logout(); location.reload(); }, 3000); 
+                    }
+                    if (data.action === 'deleted') { 
+                        Auth.logout(); 
+                        showToast('❌ Tài khoản đã bị xóa!', 'fas fa-user-slash', 'error'); 
+                        setTimeout(() => location.reload(), 2000); 
+                    }
+                    if (data.action === 'updated' || data.action === 'unlocked') {
+                        const updatedUser = Auth.getUserById(data.userId);
+                        if (updatedUser) { 
+                            APP.balance = updatedUser.balance || 0; 
+                            APP.vipLevel = updatedUser.vipLevel || 0; 
+                            APP.vipPoints = updatedUser.vipPoints || 0; 
+                            if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString(); 
+                            updateVIPUI(updatedUser); 
                         }
                     }
                 }
-                if (APP.isAdmin) {
-                    renderDepositRequests();
-                    renderAdminDashboard();
-                    renderAdminUsers();
-                    const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
-                    if (DOM.pendingBadge) { 
-                        DOM.pendingBadge.textContent = pendingCount; 
-                        DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; 
-                    }
-                    showToast(`📢 ${data.username || 'User'} đã được duyệt ${(data.amount || 0).toLocaleString()}đ!`, 'fas fa-bell', 'success');
-                    updateRevenueChart();
-                }
-                updateRealStats();
+                lastSyncTimestamp = data.timestamp || Date.now();
+            } catch(e) {
+                console.error('User sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
             }
-            if (data.action_type === 'reject_deposit') {
-                if (APP.isAdmin) {
-                    renderDepositRequests();
-                    renderAdminDashboard();
-                    showToast(`📢 ${data.username || 'User'} đã bị từ chối!`, 'fas fa-bell', 'warning');
-                }
-            }
-            lastSyncTimestamp = data.timestamp || Date.now();
-        } catch(e) {
-            console.error('Admin action sync error:', e);
-        } finally {
-            isProcessingSync = false;
-            processSyncQueue();
+            return;
         }
-        return;
-    }
 
-    // Fallback
-    if (APP.isAdmin) { renderAdminDashboard(); }
-    renderFiles(); renderFileGrid(); updateRealStats(); updateRevenueChart();
+        // === FILES - CHỈ HIỂN THỊ KHI CÓ THAY ĐỔI TỪ USER ===
+        if (action.includes('files')) {
+            try {
+                let changed = false;
+                if (data.action === 'created' && data.file) {
+                    FILE_DATA = getGlobalFiles();
+                    if (!FILE_DATA.some(f => f.id === data.file.id)) { 
+                        FILE_DATA.push(data.file); 
+                        saveGlobalFiles(FILE_DATA);
+                        changed = true;
+                        showToast(`📁 Đã thêm file: ${data.file.name}`, 'fas fa-file', 'success');
+                    }
+                }
+                if (data.action === 'updated' && data.file) {
+                    FILE_DATA = getGlobalFiles();
+                    const idx = FILE_DATA.findIndex(f => f.id === data.file.id);
+                    if (idx !== -1) { 
+                        FILE_DATA[idx] = { ...FILE_DATA[idx], ...data.file }; 
+                        saveGlobalFiles(FILE_DATA);
+                        changed = true;
+                        showToast(`📁 Đã cập nhật: ${data.file.name}`, 'fas fa-file', 'success');
+                    }
+                }
+                if (data.action === 'deleted' && data.fileId) {
+                    FILE_DATA = getGlobalFiles();
+                    const deleted = FILE_DATA.find(f => f.id === data.fileId);
+                    FILE_DATA = FILE_DATA.filter(f => f.id !== data.fileId);
+                    saveGlobalFiles(FILE_DATA);
+                    changed = true;
+                    if (deleted) showToast(`📁 Đã xóa: ${deleted.name}`, 'fas fa-trash', 'warning');
+                }
+                if (data.action === 'update' && data.files) { 
+                    FILE_DATA = data.files; 
+                    saveGlobalFiles(FILE_DATA);
+                    changed = true;
+                }
+                if (changed) {
+                    APP.files = [...FILE_DATA]; 
+                    APP.filteredFiles = [...FILE_DATA];
+                    renderFiles(); 
+                    renderFileGrid();
+                    if (APP.isAdmin) renderAdminFiles();
+                    updateRealStats();
+                }
+                lastSyncTimestamp = data.timestamp || Date.now();
+            } catch(e) {
+                console.error('Files sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
+            }
+            return;
+        }
+
+        // === GIFTCODE ===
+        if (action.includes('giftcode')) {
+            try {
+                if (data.action === 'created' && data.code) {
+                    const codes = Auth.getGiftcodes();
+                    if (!codes.some(c => c.code === data.code.code)) { 
+                        codes.push(data.code); 
+                        Auth.saveGiftcodes(codes);
+                        showToast(`🎫 Giftcode ${data.code.code} đã được tạo!`, 'fas fa-ticket', 'success');
+                    }
+                }
+                if (data.action === 'deleted' && data.code) {
+                    const codes = Auth.getGiftcodes();
+                    Auth.saveGiftcodes(codes.filter(c => c.code !== data.code));
+                    showToast(`🎫 Giftcode ${data.code} đã được xóa!`, 'fas fa-ticket', 'warning');
+                }
+                if (APP.isAdmin) renderAdminGiftcodes();
+                lastSyncTimestamp = data.timestamp || Date.now();
+            } catch(e) {
+                console.error('Giftcode sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
+            }
+            return;
+        }
+
+        // === EVENTS ===
+        if (action.includes('event')) {
+            try {
+                if (data.action === 'created' && data.event) {
+                    const events = Auth.getEvents();
+                    if (!events.some(e => e.id === data.event.id)) { 
+                        events.push(data.event); 
+                        Auth.saveEvents(events);
+                        showToast(`📅 Sự kiện "${data.event.name}" đã được tạo!`, 'fas fa-calendar-day', 'success');
+                    }
+                }
+                if (data.action === 'updated' && data.event) {
+                    const events = Auth.getEvents();
+                    const idx = events.findIndex(e => e.id === data.event.id);
+                    if (idx !== -1) { 
+                        events[idx] = { ...events[idx], ...data.event }; 
+                        Auth.saveEvents(events);
+                        showToast(`📅 Sự kiện "${data.event.name}" đã được cập nhật!`, 'fas fa-calendar-day', 'success');
+                    }
+                }
+                if (data.action === 'deleted' && data.eventId) {
+                    const events = Auth.getEvents();
+                    const deleted = events.find(e => e.id === data.eventId);
+                    Auth.saveEvents(events.filter(e => e.id !== data.eventId));
+                    if (deleted) showToast(`📅 Đã xóa sự kiện: ${deleted.name}`, 'fas fa-calendar-day', 'warning');
+                }
+                renderEvents();
+                if (APP.isAdmin) renderAdminEvents();
+                lastSyncTimestamp = data.timestamp || Date.now();
+            } catch(e) {
+                console.error('Events sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
+            }
+            return;
+        }
+
+        // === SPIN WEIGHTS ===
+        if (action.includes('spin')) {
+            try {
+                if (data.weights) { 
+                    Auth.saveSpinWeights(data.weights); 
+                    if (APP.isAdmin) renderAdminSpinWeights(); 
+                    showToast('🎡 Tỉ lệ vòng quay đã được cập nhật!', 'fas fa-dharmachakra', 'success');
+                }
+                lastSyncTimestamp = data.timestamp || Date.now();
+            } catch(e) {
+                console.error('Spin weights sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
+            }
+            return;
+        }
+
+        // === SETTINGS - CHỈ HIỂN THỊ KHI CÓ THAY ĐỔI THỰC SỰ ===
+        if (action.includes('settings')) {
+            try {
+                let changed = false;
+                if (data.maxDeposit && data.maxDeposit !== APP.maxDeposit) { 
+                    APP.maxDeposit = data.maxDeposit; 
+                    changed = true;
+                }
+                if (data.bankConfig) { 
+                    APP.bankConfig = data.bankConfig; 
+                    saveBankConfig(data.bankConfig);
+                    if (APP.isAdmin) renderAdminQRConfig(); 
+                    changed = true;
+                }
+                if (data.supportLinks) { 
+                    updateSupportUI(data.supportLinks); 
+                    localStorage.setItem(STORAGE_KEY_SUPPORT, JSON.stringify(data.supportLinks));
+                    changed = true;
+                }
+                if (changed) {
+                    showToast('⚙️ Cài đặt đã được cập nhật!', 'fas fa-gear', 'success');
+                }
+                lastSyncTimestamp = data.timestamp || Date.now();
+            } catch(e) {
+                console.error('Settings sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
+            }
+            return;
+        }
+
+        // === CART ===
+        if (action.includes('cart') && data.cart) {
+            try {
+                localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(data.cart));
+                updateCartUI(); renderCart();
+                lastSyncTimestamp = data.timestamp || Date.now();
+            } catch(e) {
+                console.error('Cart sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
+            }
+            return;
+        }
+
+        // === REVIEW ===
+        if (action.includes('review') && data.review) {
+            try {
+                const reviews = Auth.getReviews();
+                if (!reviews.some(r => r.id === data.review.id)) { 
+                    reviews.unshift(data.review); 
+                    Auth.saveReviews(reviews); 
+                    renderReviews(); 
+                    showToast('⭐ Đã có đánh giá mới!', 'fas fa-star', 'success');
+                }
+                lastSyncTimestamp = data.timestamp || Date.now();
+            } catch(e) {
+                console.error('Review sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
+            }
+            return;
+        }
+
+        // === SYSTEM EVENT - MAINTENANCE ===
+        if (action.includes('system') && data.event === 'maintenance') {
+            try {
+                if (data.status !== undefined) setMaintenance(data.status, true);
+                if (data.message) showToast(`📢 ${data.message}`, 'fas fa-bullhorn', 'warning');
+                lastSyncTimestamp = data.timestamp || Date.now();
+            } catch(e) {
+                console.error('System event sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
+            }
+            return;
+        }
+
+        // === FULL STATE ===
+        if (action.includes('full') && data.data) {
+            try {
+                const currentState = getCurrentStateHash();
+                const newState = JSON.stringify(data.data);
+                if (currentState !== newState) {
+                    lastSyncTimestamp = data.timestamp || Date.now();
+                    lastStateHash = newState;
+                    applyFullState(data.data, true);
+                    updateRevenueChart();
+                    // CHỈ HIỂN THỊ TOAST KHI KHÔNG PHẢI SILENT
+                    if (!data.silent) {
+                        showToast('🔄 Đã đồng bộ toàn bộ dữ liệu!', 'fas fa-sync', 'success');
+                    }
+                }
+            } catch(e) {
+                console.error('Full state sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
+            }
+            return;
+        }
+
+        // === SYNC REQUEST ===
+        if (action.includes('sync_request')) { 
+            setTimeout(() => {
+                publishFullState({ silent: true });
+            }, 500); 
+            _isSyncProcessing = false;
+            processSyncQueue();
+            return;
+        }
+
+        // === ADMIN ACTION ===
+        if (action.includes('admin_action')) {
+            try {
+                if (data.action_type === 'approve_deposit') {
+                    if (data.userId) {
+                        const users = Auth.getUsers();
+                        const user = users.find(u => u.id === data.userId);
+                        if (user) {
+                            const amount = data.amount || 0;
+                            user.balance = (user.balance || 0) + amount;
+                            user.totalDeposit = (user.totalDeposit || 0) + amount;
+                            const newLevel = Auth.calculateVipLevel(user.totalDeposit);
+                            if (newLevel > (user.vipLevel || 0)) {
+                                user.vipLevel = newLevel;
+                                user.vipPoints = (user.vipPoints || 0) + (newLevel - (user.vipLevel || 0)) * 1000;
+                            }
+                            user.history = user.history || [];
+                            user.history.unshift({
+                                id: '#DEP-' + Date.now().toString(36).toUpperCase(),
+                                desc: `Nạp tiền (đã duyệt)`,
+                                amount: `+${amount.toLocaleString()}đ`,
+                                status: 'Thành công',
+                                time: new Date().toLocaleString('vi-VN')
+                            });
+                            if (user.depositRequests) {
+                                const req = user.depositRequests.find(r => r.id === data.requestId);
+                                if (req) {
+                                    req.status = 'approved';
+                                    req.updatedAt = new Date().toISOString();
+                                }
+                            }
+                            Auth.saveUsers(users);
+                            
+                            if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
+                                APP.balance = user.balance;
+                                APP.totalDeposit = user.totalDeposit;
+                                APP.vipLevel = user.vipLevel;
+                                APP.vipPoints = user.vipPoints;
+                                if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
+                                if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
+                                renderHistory();
+                                updateVIPUI(user);
+                                if (!data.sender || data.sender !== mqttClient?.options?.clientId) {
+                                    showToast(`💰 Đã nhận ${amount.toLocaleString()}đ!`, 'fas fa-wallet', 'success');
+                                    triggerConfetti();
+                                }
+                                updateRevenueChart();
+                            }
+                        }
+                    }
+                    if (APP.isAdmin) {
+                        renderDepositRequests();
+                        renderAdminDashboard();
+                        renderAdminUsers();
+                        const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
+                        if (DOM.pendingBadge) { 
+                            DOM.pendingBadge.textContent = pendingCount; 
+                            DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; 
+                        }
+                        if (!data.sender || data.sender !== mqttClient?.options?.clientId) {
+                            showToast(`✅ Đã duyệt ${(data.amount || 0).toLocaleString()}đ cho ${data.username || 'User'}!`, 'fas fa-check-circle', 'success');
+                        }
+                        updateRevenueChart();
+                    }
+                    updateRealStats();
+                }
+                if (data.action_type === 'reject_deposit') {
+                    if (APP.isAdmin) {
+                        renderDepositRequests();
+                        renderAdminDashboard();
+                        if (!data.sender || data.sender !== mqttClient?.options?.clientId) {
+                            showToast(`❌ Đã từ chối ${(data.amount || 0).toLocaleString()}đ của ${data.username || 'User'}!`, 'fas fa-times-circle', 'error');
+                        }
+                    }
+                }
+                lastSyncTimestamp = data.timestamp || Date.now();
+            } catch(e) {
+                console.error('Admin action sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
+            }
+            return;
+        }
+
+        // Fallback - không hiển thị toast
+        if (APP.isAdmin) { renderAdminDashboard(); }
+        renderFiles(); renderFileGrid(); updateRealStats(); updateRevenueChart();
+    } catch(e) {
+        console.error('Sync error:', e);
+    } finally {
+        _isSyncProcessing = false;
+    }
 }
 
 // ============================================================
-//  FORCE SYNC - GỬI DỮ LIỆU ĐẾN TẤT CẢ USER
+//  FORCE SYNC - GỬI DỮ LIỆU ĐẾN TẤT CẢ USER (CHỈ KHI CÓ THAY ĐỔI)
 // ============================================================
 function forceSyncToAllUsers(silent = false) {
+    const currentHash = getCurrentStateHash();
+    if (currentHash === lastStateHash && !silent) {
+        console.log('🔄 Không có thay đổi, bỏ qua force sync');
+        return;
+    }
+    
     const fullState = {
         files: FILE_DATA,
         users: Auth.getUsers(),
@@ -1196,6 +1275,8 @@ function forceSyncToAllUsers(silent = false) {
         depositRequests: Auth.getAllDepositRequests(),
         timestamp: Date.now()
     };
+    
+    lastStateHash = currentHash;
     
     publishMqtt('full_state_force', { 
         data: fullState,
@@ -1238,7 +1319,7 @@ setInterval(function() {
                     const currentState = getCurrentStateHash();
                     const newState = JSON.stringify(parsed.data);
                     if (currentState !== newState) {
-                        applyFullState(parsed.data);
+                        applyFullState(parsed.data, true);
                         updateRevenueChart();
                         if (!parsed.silent) {
                             showToast('🔄 Đã đồng bộ dữ liệu từ admin!', 'fas fa-sync', 'success');
@@ -1248,12 +1329,19 @@ setInterval(function() {
             }
         }
     } catch(e) {}
-}, 2000);
+}, 3000);
 
 // ============================================================
-//  PUBLISH FULL STATE
+//  PUBLISH FULL STATE (CHỈ KHI CÓ THAY ĐỔI)
 // ============================================================
 function publishFullState(options = {}) {
+    const currentHash = getCurrentStateHash();
+    if (currentHash === lastStateHash && !options.force) {
+        console.log('🔄 Không có thay đổi, bỏ qua publishFullState');
+        return;
+    }
+    lastStateHash = currentHash;
+    
     const state = {
         files: FILE_DATA,
         users: Auth.getUsers(),
@@ -1272,9 +1360,9 @@ function publishFullState(options = {}) {
 }
 
 // ============================================================
-//  APPLY FULL STATE
+//  APPLY FULL STATE - SILENT MODE
 // ============================================================
-function applyFullState(data) {
+function applyFullState(data, silent = false) {
     if (!data) return;
     
     if (data.files) {
@@ -1343,7 +1431,7 @@ function applyFullState(data) {
     }
     
     if (data.maintenance !== undefined) {
-        setMaintenance(data.maintenance);
+        setMaintenance(data.maintenance, true);
     }
     
     if (data.cart) {
@@ -1366,7 +1454,7 @@ function applyFullState(data) {
 }
 
 // ============================================================
-//  AUTH SYSTEM - FIX CỘNG TIỀN
+//  AUTH SYSTEM - FIX CỘNG TIỀN CHÍNH XÁC
 // ============================================================
 const Auth = {
     getUsers() {
@@ -1375,9 +1463,10 @@ const Auth = {
     saveUsers(users) {
         localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
         try { localStorage.setItem('ff_sync_trigger', Date.now().toString()); } catch (e) {}
-        publishMqtt('user_sync', { action: 'update_all', users: users });
-        broadcastSync({ type: 'user_sync', action: 'update_all', users: users });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('user_sync', { action: 'update_all', users: users });
+            broadcastSync({ type: 'user_sync', action: 'update_all', users: users });
+        }
     },
     getCurrentUser() {
         try { return JSON.parse(localStorage.getItem(STORAGE_KEY_CURRENT_USER)) || null; } catch { return null; }
@@ -1490,9 +1579,10 @@ const Auth = {
         users.push(newUser);
         this.saveUsers(users);
         sendWebhook('new_user', { username, email });
-        publishMqtt('user_sync', { action: 'created', user: newUser });
-        broadcastSync({ type: 'user_sync', action: 'created', user: newUser });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('user_sync', { action: 'created', user: newUser });
+            broadcastSync({ type: 'user_sync', action: 'created', user: newUser });
+        }
         return { success: true, message: 'Đăng ký thành công!', user: newUser };
     },
     
@@ -1516,9 +1606,10 @@ const Auth = {
             current.history = user.history;
             this.saveCurrentUser(current);
         }
-        broadcastSync({ type: 'balance_update', userId, balance: user.balance });
-        sendWebhook('balance_update', { userId, username: user.username, balance: user.balance, amount, description });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            broadcastSync({ type: 'balance_update', userId, balance: user.balance });
+            sendWebhook('balance_update', { userId, username: user.username, balance: user.balance, amount, description });
+        }
         return user;
     },
     
@@ -1534,8 +1625,10 @@ const Auth = {
             current.purchasedFiles = user.purchasedFiles;
             this.saveCurrentUser(current);
         }
-        sendWebhook('purchase', { userId, username: user.username, fileId, fileName });
-        publishMqtt('purchase_sync', { userId, username: user.username, fileId, fileName });
+        if (!_isSyncProcessing) {
+            sendWebhook('purchase', { userId, username: user.username, fileId, fileName });
+            publishMqtt('purchase_sync', { userId, username: user.username, fileId, fileName });
+        }
         return user;
     },
     
@@ -1594,9 +1687,10 @@ const Auth = {
             }
             checkAchievements(userId);
         }
-        broadcastSync({ type: 'balance_update', userId, balance: u?.balance || 0 });
-        sendWebhook('deposit', { userId, username: u?.username, amount });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            broadcastSync({ type: 'balance_update', userId, balance: u?.balance || 0 });
+            sendWebhook('deposit', { userId, username: u?.username, amount });
+        }
         return user;
     },
     
@@ -1624,9 +1718,11 @@ const Auth = {
         user.depositRequests.push(request);
         this.saveUsers(users);
         const syncData = { status: 'pending', userId: user.id, username: user.username, amount: amount, method: method, requestId: request.id };
-        publishMqtt('deposit', syncData);
-        broadcastSync({ type: 'deposit', ...syncData });
-        sendWebhook('deposit_request', { userId, username: user.username, amount, method });
+        if (!_isSyncProcessing) {
+            publishMqtt('deposit', syncData);
+            broadcastSync({ type: 'deposit', ...syncData });
+            sendWebhook('deposit_request', { userId, username: user.username, amount, method });
+        }
         if (APP.isAdmin) {
             setTimeout(() => {
                 renderDepositRequests();
@@ -1676,12 +1772,11 @@ const Auth = {
             return null;
         }
         
-        // Cập nhật trạng thái
         foundRequest.status = 'approved';
         foundRequest.updatedAt = new Date().toISOString();
         const amount = foundRequest.amount;
         
-        // CỘNG TIỀN VÀO TÀI KHOẢN USER
+        // CỘNG TIỀN
         const oldBalance = foundUser.balance || 0;
         foundUser.balance = oldBalance + amount;
         foundUser.totalDeposit = (foundUser.totalDeposit || 0) + amount;
@@ -1694,7 +1789,7 @@ const Auth = {
             foundUser.vipLevel = newLevel;
         }
         
-        // Thêm lịch sử
+        // Lịch sử
         foundUser.history = foundUser.history || [];
         foundUser.history.unshift({
             id: '#DEP-' + Date.now().toString(36).toUpperCase(),
@@ -1704,10 +1799,7 @@ const Auth = {
             time: new Date().toLocaleString('vi-VN')
         });
         
-        // Lưu users
         this.saveUsers(users);
-        
-        // Gửi webhook
         sendWebhook('deposit_approved', { userId: foundUser.id, username: foundUser.username, amount: amount });
         
         // Gửi sync data
@@ -1722,24 +1814,26 @@ const Auth = {
             newVipLevel: foundUser.vipLevel,
             newVipPoints: foundUser.vipPoints
         };
-        publishMqtt('deposit_updated', syncData);
-        broadcastSync({ type: 'deposit_updated', ...syncData });
-        publishMqtt('admin_action', { 
-            action_type: 'approve_deposit', 
-            userId: foundUser.id, 
-            username: foundUser.username, 
-            amount: amount,
-            requestId: requestId
-        });
-        broadcastSync({ type: 'admin_action', 
-            action_type: 'approve_deposit', 
-            userId: foundUser.id, 
-            username: foundUser.username, 
-            amount: amount,
-            requestId: requestId
-        });
+        if (!_isSyncProcessing) {
+            publishMqtt('deposit_updated', syncData);
+            broadcastSync({ type: 'deposit_updated', ...syncData });
+            publishMqtt('admin_action', { 
+                action_type: 'approve_deposit', 
+                userId: foundUser.id, 
+                username: foundUser.username, 
+                amount: amount,
+                requestId: requestId
+            });
+            broadcastSync({ type: 'admin_action', 
+                action_type: 'approve_deposit', 
+                userId: foundUser.id, 
+                username: foundUser.username, 
+                amount: amount,
+                requestId: requestId
+            });
+        }
         
-        // Cập nhật UI cho user hiện tại nếu là user được duyệt
+        // Cập nhật UI user
         const current = this.getCurrentUser();
         if (current && current.id === foundUser.id) {
             current.balance = foundUser.balance;
@@ -1758,8 +1852,10 @@ const Auth = {
             renderHistory();
             updateVIPUI(foundUser);
             checkAchievements(foundUser.id);
-            showToast(`💰 Bạn đã nhận ${amount.toLocaleString()}đ!`, 'fas fa-wallet', 'success');
-            triggerConfetti();
+            if (!_isSyncProcessing) {
+                showToast(`💰 Bạn đã nhận ${amount.toLocaleString()}đ!`, 'fas fa-wallet', 'success');
+                triggerConfetti();
+            }
             updateRevenueChart();
         }
         
@@ -1776,16 +1872,18 @@ const Auth = {
                     DOM.pendingBadge.textContent = pendingCount; 
                     DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; 
                 }
-                showToast(`✅ Đã duyệt ${amount.toLocaleString()}đ cho ${foundUser.username}!`, 'fas fa-check-circle', 'success');
+                if (!_isSyncProcessing) {
+                    showToast(`✅ Đã duyệt ${amount.toLocaleString()}đ cho ${foundUser.username}!`, 'fas fa-check-circle', 'success');
+                }
             }, 10);
         }
         
-        // FORCE SYNC NGAY LẬP TỨC
+        // Force sync
         setTimeout(() => forceSyncToAllUsers(true), 200);
         return foundRequest;
     },
     
-    // FIX: REJECT DEPOSIT
+    // REJECT DEPOSIT
     rejectDeposit(requestId, reason = '') {
         const users = this.getUsers();
         let foundRequest = null, foundUser = null;
@@ -1815,23 +1913,25 @@ const Auth = {
             reason: reason,
             requestId: requestId
         };
-        publishMqtt('deposit_updated', syncData);
-        broadcastSync({ type: 'deposit_updated', ...syncData });
-        publishMqtt('admin_action', { 
-            action_type: 'reject_deposit', 
-            userId: foundUser.id, 
-            username: foundUser.username, 
-            amount: foundRequest.amount,
-            requestId: requestId
-        });
-        broadcastSync({ type: 'admin_action', 
-            action_type: 'reject_deposit', 
-            userId: foundUser.id, 
-            username: foundUser.username, 
-            amount: foundRequest.amount,
-            requestId: requestId
-        });
-        sendWebhook('deposit_rejected', { userId: foundUser.id, username: foundUser.username, amount: foundRequest.amount, reason });
+        if (!_isSyncProcessing) {
+            publishMqtt('deposit_updated', syncData);
+            broadcastSync({ type: 'deposit_updated', ...syncData });
+            publishMqtt('admin_action', { 
+                action_type: 'reject_deposit', 
+                userId: foundUser.id, 
+                username: foundUser.username, 
+                amount: foundRequest.amount,
+                requestId: requestId
+            });
+            broadcastSync({ type: 'admin_action', 
+                action_type: 'reject_deposit', 
+                userId: foundUser.id, 
+                username: foundUser.username, 
+                amount: foundRequest.amount,
+                requestId: requestId
+            });
+            sendWebhook('deposit_rejected', { userId: foundUser.id, username: foundUser.username, amount: foundRequest.amount, reason });
+        }
         if (APP.isAdmin) {
             setTimeout(() => { 
                 renderDepositRequests(); 
@@ -1841,7 +1941,9 @@ const Auth = {
                     DOM.pendingBadge.textContent = pendingCount; 
                     DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; 
                 }
-                showToast(`❌ Đã từ chối ${foundRequest.amount.toLocaleString()}đ của ${foundUser.username}!`, 'fas fa-times-circle', 'error');
+                if (!_isSyncProcessing) {
+                    showToast(`❌ Đã từ chối ${foundRequest.amount.toLocaleString()}đ của ${foundUser.username}!`, 'fas fa-times-circle', 'error');
+                }
             }, 10);
         }
         setTimeout(() => forceSyncToAllUsers(true), 200);
@@ -1891,8 +1993,10 @@ const Auth = {
         const file = FILE_DATA.find(f => f.id === fileId);
         if (file) { file.rating = Math.round(avgRating * 10) / 10; file.sold = fileReviews.length; saveGlobalFiles(FILE_DATA); }
         checkAchievements(userId);
-        publishMqtt('review_sync', { action: 'created', review: review });
-        broadcastSync({ type: 'review_sync', action: 'created', review: review });
+        if (!_isSyncProcessing) {
+            publishMqtt('review_sync', { action: 'created', review: review });
+            broadcastSync({ type: 'review_sync', action: 'created', review: review });
+        }
         return review;
     },
     
@@ -1983,18 +2087,20 @@ const Auth = {
     },
     saveEvents(events) {
         localStorage.setItem(STORAGE_KEY_EVENTS, JSON.stringify(events));
-        publishMqtt('event_sync', { action: 'update_all', events: events });
-        broadcastSync({ type: 'event_sync', action: 'update_all', events: events });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('event_sync', { action: 'update_all', events: events });
+            broadcastSync({ type: 'event_sync', action: 'update_all', events: events });
+        }
     },
     addEvent(eventData) {
         const events = this.getEvents();
         const newEvent = { id: Date.now(), ...eventData };
         events.push(newEvent);
         this.saveEvents(events);
-        publishMqtt('event_sync', { action: 'created', event: newEvent });
-        broadcastSync({ type: 'event_sync', action: 'created', event: newEvent });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('event_sync', { action: 'created', event: newEvent });
+            broadcastSync({ type: 'event_sync', action: 'created', event: newEvent });
+        }
         return newEvent;
     },
     updateEvent(eventId, data) {
@@ -2003,18 +2109,20 @@ const Auth = {
         if (idx === -1) return null;
         events[idx] = { ...events[idx], ...data };
         this.saveEvents(events);
-        publishMqtt('event_sync', { action: 'updated', event: events[idx] });
-        broadcastSync({ type: 'event_sync', action: 'updated', event: events[idx] });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('event_sync', { action: 'updated', event: events[idx] });
+            broadcastSync({ type: 'event_sync', action: 'updated', event: events[idx] });
+        }
         return events[idx];
     },
     deleteEvent(eventId) {
         let events = this.getEvents();
         events = events.filter(e => e.id !== eventId);
         this.saveEvents(events);
-        publishMqtt('event_sync', { action: 'deleted', eventId });
-        broadcastSync({ type: 'event_sync', action: 'deleted', eventId });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('event_sync', { action: 'deleted', eventId });
+            broadcastSync({ type: 'event_sync', action: 'deleted', eventId });
+        }
         return true;
     },
     
@@ -2023,9 +2131,10 @@ const Auth = {
     },
     saveGiftcodes(codes) {
         localStorage.setItem(STORAGE_KEY_GIFTCODES, JSON.stringify(codes));
-        publishMqtt('giftcode_sync', { action: 'update_all', codes: codes });
-        broadcastSync({ type: 'giftcode_sync', action: 'update_all', codes: codes });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('giftcode_sync', { action: 'update_all', codes: codes });
+            broadcastSync({ type: 'giftcode_sync', action: 'update_all', codes: codes });
+        }
     },
     createGiftcode(code, value) {
         const codes = this.getGiftcodes();
@@ -2033,18 +2142,20 @@ const Auth = {
         const newCode = { code: code.toUpperCase(), value: value, used: false, createdAt: new Date().toISOString(), usedBy: null };
         codes.push(newCode);
         this.saveGiftcodes(codes);
-        publishMqtt('giftcode_sync', { action: 'created', code: newCode });
-        broadcastSync({ type: 'giftcode_sync', action: 'created', code: newCode });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('giftcode_sync', { action: 'created', code: newCode });
+            broadcastSync({ type: 'giftcode_sync', action: 'created', code: newCode });
+        }
         return { success: true, message: 'Tạo giftcode thành công!', data: newCode };
     },
     deleteGiftcode(code) {
         let codes = this.getGiftcodes();
         codes = codes.filter(c => c.code !== code);
         this.saveGiftcodes(codes);
-        publishMqtt('giftcode_sync', { action: 'deleted', code: code });
-        broadcastSync({ type: 'giftcode_sync', action: 'deleted', code: code });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('giftcode_sync', { action: 'deleted', code: code });
+            broadcastSync({ type: 'giftcode_sync', action: 'deleted', code: code });
+        }
         return true;
     },
     redeemGiftcode(code, userId) {
@@ -2074,9 +2185,10 @@ const Auth = {
             Object.assign(current, data);
             this.saveCurrentUser(current);
         }
-        publishMqtt('user_sync', { action: 'updated', userId: user.id, username: user.username, user: user });
-        broadcastSync({ type: 'user_sync', action: 'updated', userId: user.id, username: user.username, user: user });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('user_sync', { action: 'updated', userId: user.id, username: user.username, user: user });
+            broadcastSync({ type: 'user_sync', action: 'updated', userId: user.id, username: user.username, user: user });
+        }
         return user;
     },
     
@@ -2086,9 +2198,10 @@ const Auth = {
         if (!user) return null;
         user.password = newPassword;
         this.saveUsers(users);
-        publishMqtt('user_sync', { action: 'password_changed', userId: user.id, username: user.username });
-        broadcastSync({ type: 'user_sync', action: 'password_changed', userId: user.id, username: user.username });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('user_sync', { action: 'password_changed', userId: user.id, username: user.username });
+            broadcastSync({ type: 'user_sync', action: 'password_changed', userId: user.id, username: user.username });
+        }
         return user;
     },
     
@@ -2098,8 +2211,10 @@ const Auth = {
         if (!user) return null;
         user.locked = true;
         this.saveUsers(users);
-        publishMqtt('user_sync', { action: 'locked', userId: user.id, username: user.username });
-        broadcastSync({ type: 'user_sync', action: 'locked', userId: user.id, username: user.username });
+        if (!_isSyncProcessing) {
+            publishMqtt('user_sync', { action: 'locked', userId: user.id, username: user.username });
+            broadcastSync({ type: 'user_sync', action: 'locked', userId: user.id, username: user.username });
+        }
         const current = this.getCurrentUser();
         if (current && current.id === userId) {
             this.logout();
@@ -2115,9 +2230,10 @@ const Auth = {
         if (!user) return null;
         user.locked = false;
         this.saveUsers(users);
-        publishMqtt('user_sync', { action: 'unlocked', userId: user.id, username: user.username });
-        broadcastSync({ type: 'user_sync', action: 'unlocked', userId: user.id, username: user.username });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('user_sync', { action: 'unlocked', userId: user.id, username: user.username });
+            broadcastSync({ type: 'user_sync', action: 'unlocked', userId: user.id, username: user.username });
+        }
         return user;
     },
     
@@ -2127,9 +2243,10 @@ const Auth = {
         let users = this.getUsers();
         users = users.filter(u => u.id !== userId);
         this.saveUsers(users);
-        publishMqtt('user_sync', { action: 'deleted', userId: userId, username: user?.username });
-        broadcastSync({ type: 'user_sync', action: 'deleted', userId: userId, username: user?.username });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('user_sync', { action: 'deleted', userId: userId, username: user?.username });
+            broadcastSync({ type: 'user_sync', action: 'deleted', userId: userId, username: user?.username });
+        }
         if (APP.isLoggedIn && APP.currentUser.id === userId) {
             this.logout();
             showToast('❌ Tài khoản của bạn đã bị xóa!', 'fas fa-user-slash', 'error');
@@ -2143,9 +2260,10 @@ const Auth = {
     },
     saveSpinWeights(weights) {
         localStorage.setItem(STORAGE_KEY_SPIN_WEIGHTS, JSON.stringify(weights));
-        publishMqtt('spin_weights_sync', { weights: weights });
-        broadcastSync({ type: 'spin_weights_sync', weights: weights });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
+        if (!_isSyncProcessing) {
+            publishMqtt('spin_weights_sync', { weights: weights });
+            broadcastSync({ type: 'spin_weights_sync', weights: weights });
+        }
     },
     saveSpinHistory(userId, entry) {
         const user = this.getUserById(userId);
@@ -2180,9 +2298,10 @@ function getBankConfig() {
 }
 function saveBankConfig(config) {
     localStorage.setItem(STORAGE_KEY_BANK, JSON.stringify(config));
-    publishMqtt('settings_sync', { bankConfig: config });
-    broadcastSync({ type: 'settings_sync', bankConfig: config });
-    setTimeout(() => forceSyncToAllUsers(true), 100);
+    if (!_isSyncProcessing) {
+        publishMqtt('settings_sync', { bankConfig: config });
+        broadcastSync({ type: 'settings_sync', bankConfig: config });
+    }
 }
 
 // ============================================================
@@ -2195,9 +2314,10 @@ function getSupportLinks() {
 function saveSupportLinks(data) {
     localStorage.setItem(STORAGE_KEY_SUPPORT, JSON.stringify(data));
     updateSupportUI(data);
-    publishMqtt('settings_sync', { supportLinks: data });
-    broadcastSync({ type: 'settings_sync', supportLinks: data });
-    setTimeout(() => forceSyncToAllUsers(true), 100);
+    if (!_isSyncProcessing) {
+        publishMqtt('settings_sync', { supportLinks: data });
+        broadcastSync({ type: 'settings_sync', supportLinks: data });
+    }
 }
 
 // ============================================================
@@ -2211,9 +2331,10 @@ function saveCart(cart) {
     updateCartUI();
     renderCart();
     try { localStorage.setItem('ff_sync_trigger', Date.now().toString()); } catch (e) {}
-    publishMqtt('cart_sync', { cart: cart });
-    broadcastSync({ type: 'cart_sync', cart: cart });
-    setTimeout(() => forceSyncToAllUsers(true), 100);
+    if (!_isSyncProcessing) {
+        publishMqtt('cart_sync', { cart: cart });
+        broadcastSync({ type: 'cart_sync', cart: cart });
+    }
 }
 function addToCart(fileId) {
     if (!Auth.isLoggedIn()) {
@@ -2700,7 +2821,7 @@ const APP = {
 };
 
 // ============================================================
-//  DOM REFS
+//  DOM REFS (GIỮ NGUYÊN)
 // ============================================================
 const DOM = {
     cursor: document.getElementById('cursor'),
@@ -2866,7 +2987,7 @@ const DOM = {
 };
 
 // ============================================================
-//  SECURITY - CHỐNG F12, DEBUG, XSS
+//  SECURITY - CHỐNG F12, DEBUG, XSS (GIỮ NGUYÊN)
 // ============================================================
 (function antiF12Pro() {
     document.addEventListener('keydown', function(e) {
@@ -2983,7 +3104,7 @@ function initSecurity() {
 setTimeout(initSecurity, 1000);
 
 // ============================================================
-//  SESSION MANAGEMENT
+//  SESSION MANAGEMENT (GIỮ NGUYÊN)
 // ============================================================
 function checkSession() {
     const user = Auth.getCurrentUser();
@@ -3059,6 +3180,7 @@ function loginSuccess(user) {
     renderAchievements();
     checkAchievements(user.id);
     showToast(`Chào mừng ${user.username}!`, 'fas fa-circle-check', 'success');
+    updateSyncStatus('Đã đăng nhập', true);
     setTimeout(() => {
         publishMqtt('sync_request', {});
         broadcastSync({ type: 'sync_request' });
@@ -3068,7 +3190,7 @@ function loginSuccess(user) {
 }
 
 // ============================================================
-//  VIP UI UPDATE
+//  VIP UI UPDATE (GIỮ NGUYÊN)
 // ============================================================
 function updateVIPUI(user) {
     const vipInfo = Auth.getVipInfo(user);
@@ -3097,7 +3219,7 @@ function updateVIPUI(user) {
 }
 
 // ============================================================
-//  AUTH HANDLERS
+//  AUTH HANDLERS (GIỮ NGUYÊN)
 // ============================================================
 function handleLoginSubmit(e) {
     e.preventDefault();
@@ -3152,6 +3274,7 @@ function handleLogout() {
     document.querySelectorAll('.login-required-msg').forEach(el => el.style.display = 'block');
     document.querySelectorAll('.protected-price-area').forEach(el => el.style.display = 'none');
     showToast('Đã đăng xuất!', 'fas fa-sign-out-alt');
+    updateSyncStatus('Chưa đăng nhập', false);
     switchTab('homeTab');
     setTimeout(publishFullState, 500);
 }
@@ -3165,7 +3288,7 @@ function togglePassword(inputId, icon) {
 }
 
 // ============================================================
-//  ADMIN FUNCTIONS - FIX SYNC
+//  ADMIN FUNCTIONS - GIỮ NGUYÊN NHƯNG ĐÃ FIX SYNC
 // ============================================================
 function renderAdminQRConfig() {
     const config = getBankConfig();
@@ -4505,7 +4628,7 @@ function adminShowTools() {
 
 function createBackup() {
     try {
-        const backup = { timestamp: new Date().toISOString(), version: '28.0', data: { files: localStorage.getItem(STORAGE_KEY_FILES), users: localStorage.getItem(STORAGE_KEY_USERS), cart: localStorage.getItem(STORAGE_KEY_CART), reviews: localStorage.getItem(STORAGE_KEY_REVIEWS), giftcodes: localStorage.getItem(STORAGE_KEY_GIFTCODES), events: localStorage.getItem(STORAGE_KEY_EVENTS), bank: localStorage.getItem(STORAGE_KEY_BANK), support: localStorage.getItem(STORAGE_KEY_SUPPORT), spinWeights: localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) } };
+        const backup = { timestamp: new Date().toISOString(), version: '29.0', data: { files: localStorage.getItem(STORAGE_KEY_FILES), users: localStorage.getItem(STORAGE_KEY_USERS), cart: localStorage.getItem(STORAGE_KEY_CART), reviews: localStorage.getItem(STORAGE_KEY_REVIEWS), giftcodes: localStorage.getItem(STORAGE_KEY_GIFTCODES), events: localStorage.getItem(STORAGE_KEY_EVENTS), bank: localStorage.getItem(STORAGE_KEY_BANK), support: localStorage.getItem(STORAGE_KEY_SUPPORT), spinWeights: localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) } };
         localStorage.setItem(BACKUP_KEY, JSON.stringify(backup));
         console.log('[💾] Backup dữ liệu thành công lúc:', backup.timestamp);
         return backup;
@@ -4556,7 +4679,7 @@ setInterval(createBackup, 300000);
 
 function exportAllData() {
     try {
-        const data = { version: '28.0', exportedAt: new Date().toISOString(), shopName: 'Tấn Dũng FF', data: { files: JSON.parse(localStorage.getItem(STORAGE_KEY_FILES) || '[]'), users: JSON.parse(localStorage.getItem(STORAGE_KEY_USERS) || '[]'), cart: JSON.parse(localStorage.getItem(STORAGE_KEY_CART) || '[]'), reviews: JSON.parse(localStorage.getItem(STORAGE_KEY_REVIEWS) || '[]'), giftcodes: JSON.parse(localStorage.getItem(STORAGE_KEY_GIFTCODES) || '[]'), events: JSON.parse(localStorage.getItem(STORAGE_KEY_EVENTS) || '[]'), bank: JSON.parse(localStorage.getItem(STORAGE_KEY_BANK) || '{}'), support: JSON.parse(localStorage.getItem(STORAGE_KEY_SUPPORT) || '{}'), spinWeights: JSON.parse(localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) || '[]') } };
+        const data = { version: '29.0', exportedAt: new Date().toISOString(), shopName: 'Tấn Dũng FF', data: { files: JSON.parse(localStorage.getItem(STORAGE_KEY_FILES) || '[]'), users: JSON.parse(localStorage.getItem(STORAGE_KEY_USERS) || '[]'), cart: JSON.parse(localStorage.getItem(STORAGE_KEY_CART) || '[]'), reviews: JSON.parse(localStorage.getItem(STORAGE_KEY_REVIEWS) || '[]'), giftcodes: JSON.parse(localStorage.getItem(STORAGE_KEY_GIFTCODES) || '[]'), events: JSON.parse(localStorage.getItem(STORAGE_KEY_EVENTS) || '[]'), bank: JSON.parse(localStorage.getItem(STORAGE_KEY_BANK) || '{}'), support: JSON.parse(localStorage.getItem(STORAGE_KEY_SUPPORT) || '{}'), spinWeights: JSON.parse(localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) || '[]') } };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -4709,14 +4832,18 @@ function prevTrack() { currentTrack = (currentTrack - 1 + trackList.length) % tr
     musicStatus.textContent = trackList[currentTrack] + (isPlaying ? ' 🔥' : ' ⏸️'); if (isPlaying) showToast(`Bài: ${trackList[currentTrack]}`, 'fas fa-backward'); }
 
 // ============================================================
-//  AUTO SYNC ĐỊNH KỲ
+//  AUTO SYNC ĐỊNH KỲ - GIẢM TẦN SUẤT
 // ============================================================
 setInterval(() => {
-    if (mqttClient && mqttClient.connected) {
-        publishFullState({ silent: true });
-        console.log('🔄 Auto sync full state sau 30s');
+    if (mqttClient && mqttClient.connected && !_isSyncProcessing) {
+        // Chỉ sync khi có thay đổi
+        const currentHash = getCurrentStateHash();
+        if (currentHash !== lastStateHash) {
+            publishFullState({ silent: true });
+            console.log('🔄 Auto sync full state sau 60s (có thay đổi)');
+        }
     }
-}, 30000);
+}, 60000);
 
 // ============================================================
 //  TỰ ĐỘNG SYNC KHI MỞ TAB MỚI
@@ -4733,7 +4860,7 @@ setTimeout(function() {
                     const currentState = getCurrentStateHash();
                     const newState = JSON.stringify(parsed.data);
                     if (currentState !== newState) {
-                        applyFullState(parsed.data);
+                        applyFullState(parsed.data, true);
                         updateRevenueChart();
                     }
                 }
@@ -4873,11 +5000,12 @@ window.updateRevenueChart = updateRevenueChart;
 window.getRevenueData = getRevenueData;
 window.forceSyncToAllUsers = forceSyncToAllUsers;
 window.getCurrentStateHash = getCurrentStateHash;
+window.updateSyncStatus = updateSyncStatus;
 
-console.log('🚀 SHOP TẤN DŨNG FF v28.0 - ULTIMATE FIX!');
+console.log('🚀 SHOP TẤN DŨNG FF v29.0 - ULTIMATE FIX!');
 console.log('📁 Files:', FILE_DATA.length);
 console.log('📡 MQTT: Tự động kết nối đến broker.emqx.io');
-console.log('✅ FIX TIỀN KHÔNG CỘNG - FIX ADMIN KHÔNG SYNC - 100% HOÀN THIỆN!');
+console.log('✅ FIX: KHÔNG SPAM TOAST - MQTT SYNC CHÍNH XÁC - CỘNG TIỀN ĐÚNG!');
 
 // ============================================================
 //  INIT
@@ -4922,6 +5050,7 @@ document.addEventListener('DOMContentLoaded', function() {
     populateReviewFiles();
     renderAchievements();
     renderAdminUsers();
+    updateSyncStatus('Kết nối...', false);
 
     setTimeout(updateRevenueChart, 500);
     setTimeout(initMqttClient, 2000);
@@ -4942,7 +5071,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     }
     document.getElementById('spinTotalSpent').textContent = '0đ';
-    console.log('🚀 SHOP TẤN DŨNG FF v28.0 - ULTIMATE FIX!');
+    console.log('🚀 SHOP TẤN DŨNG FF v29.0 - ULTIMATE FIX!');
     console.log('✅ TẤT CẢ CHỨC NĂNG HOÀN THIỆN!');
 });
 

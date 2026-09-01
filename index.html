@@ -23,6 +23,11 @@
     <!-- ========== NOISE CANVAS FOR ANTI-DEBUG ========== -->
     <canvas id="noiseCanvas" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;pointer-events:none;opacity:0.03;"></canvas>
 
+    <!-- ========== SYNC STATUS - HIỂN THỊ TRẠNG THÁI ĐỒNG BỘ ========== -->
+    <div id="syncStatus" style="position:fixed;bottom:10px;left:10px;z-index:99999;background:rgba(0,0,0,0.8);color:#00ff88;padding:4px 14px;border-radius:20px;font-size:11px;border:1px solid #00f0ff;backdrop-filter:blur(10px);pointer-events:none;">
+        <i class="fas fa-sync-alt fa-spin"></i> Đồng bộ: <span id="syncStatusText">Đang kết nối...</span>
+    </div>
+
     <!-- CUSTOM CURSOR -->
     <div class="custom-cursor" id="cursor"></div>
     <div class="cursor-dot" id="cursorDot"></div>
