@@ -23,11 +23,6 @@
     <!-- ========== NOISE CANVAS FOR ANTI-DEBUG ========== -->
     <canvas id="noiseCanvas" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;pointer-events:none;opacity:0.03;"></canvas>
 
-    <!-- ========== SYNC STATUS - HIỂN THỊ TRẠNG THÁI ĐỒNG BỘ ========== -->
-    <div id="syncStatus" style="position:fixed;bottom:10px;left:10px;z-index:99999;background:rgba(0,0,0,0.8);color:#00ff88;padding:4px 14px;border-radius:20px;font-size:11px;border:1px solid #00f0ff;backdrop-filter:blur(10px);pointer-events:none;">
-        <i class="fas fa-sync-alt fa-spin"></i> Đồng bộ: <span id="syncStatusText">Đang kết nối...</span>
-    </div>
-
     <!-- CUSTOM CURSOR -->
     <div class="custom-cursor" id="cursor"></div>
     <div class="cursor-dot" id="cursorDot"></div>
@@ -326,6 +321,24 @@
         </div>
     </div>
 
+    <!-- ========== MODAL USER DASHBOARD ========== -->
+    <div class="modal-overlay" id="userDashboardModal">
+        <div class="modal-box" style="max-width:700px;">
+            <span class="modal-close" data-modal="userDashboardModal">&times;</span>
+            <h2><i class="fas fa-chart-pie"></i> Dashboard Của Tôi</h2>
+            <div id="userDashboardContainer"></div>
+        </div>
+    </div>
+
+    <!-- ========== MODAL THÀNH TÍCH ========== -->
+    <div class="modal-overlay" id="achievementsModal">
+        <div class="modal-box" style="max-width:650px;">
+            <span class="modal-close" data-modal="achievementsModal">&times;</span>
+            <h2><i class="fas fa-trophy" style="color:#ffd700;"></i> Thành Tích Của Tôi</h2>
+            <div id="achievementsContainer"></div>
+        </div>
+    </div>
+
     <!-- ========== HEADER ========== -->
     <header>
         <div class="logo-area" onclick="switchTab('homeTab')">
@@ -349,6 +362,7 @@
                 <li><a href="#" data-tab="topTab"><i class="fas fa-trophy" style="color:#ff6b00;"></i> Top</a></li>
                 <li><a href="#" data-tab="supportTab"><i class="fas fa-headset"></i> Hỗ trợ</a></li>
                 <li><a href="#" data-tab="adminTab" id="adminNavLink" style="display:none;"><i class="fas fa-shield-halved"></i> Quản trị</a></li>
+                <li><a href="#" data-tab="achievementsTab" onclick="openModal('achievementsModal'); return false;"><i class="fas fa-trophy" style="color:#ffd700;"></i> Thành tích</a></li>
             </ul>
         </nav>
         <div class="user-actions">
@@ -380,6 +394,8 @@
                 <a href="#" onclick="switchTab('eventTab')"><i class="fas fa-calendar-day"></i> Sự kiện</a>
                 <a href="#" onclick="switchTab('missionTab')"><i class="fas fa-tasks"></i> Nhiệm vụ</a>
                 <a href="#" onclick="switchTab('adminTab')" id="adminDropdownLink" style="display:none;"><i class="fas fa-shield-halved"></i> Quản trị</a>
+                <a href="#" onclick="renderUserDashboard(); return false;"><i class="fas fa-chart-pie"></i> Dashboard</a>
+                <a href="#" onclick="openModal('achievementsModal'); return false;"><i class="fas fa-trophy" style="color:#ffd700;"></i> Thành tích</a>
                 <hr>
                 <a href="#" onclick="handleLogout()" style="color:#ff4d4d;"><i class="fas fa-sign-out-alt"></i> Đăng xuất</a>
             </div>
@@ -1166,6 +1182,24 @@
         <i class="fas fa-arrow-up"></i>
     </div>
 
+    <!-- ===== LOAD SCRIPT CHÍNH ===== -->
     <script src="script.js"></script>
+    
+    <!-- ===== KHỞI TẠO SYNC SAU KHI SCRIPT LOAD ===== -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.SYNC && typeof SYNC.init === 'function') {
+                console.log('[INIT] Khởi tạo SYNC Engine...');
+                SYNC.init();
+            } else {
+                console.warn('[INIT] SYNC chưa sẵn sàng, thử lại sau 1s');
+                setTimeout(() => {
+                    if (window.SYNC && typeof SYNC.init === 'function') {
+                        SYNC.init();
+                    }
+                }, 1000);
+            }
+        });
+    </script>
 </body>
 </html>
