@@ -582,16 +582,25 @@ let mqttClient = null;
 let mqttConnected = false;
 let _lastSentStateHash = '';
 
+const MQTT_CONFIG = {
+    broker: 'broker.emqx.io',
+    port: 8084,
+    clientId: (() => {
+        let id = sessionStorage.getItem('ff_mqtt_client_id');
+        if (!id) {
+            id = 'ff_shop_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 8);
+            sessionStorage.setItem('ff_mqtt_client_id', id);
+        }
+        return id;
+    })(),
+    username: '',
+    password: '',
+    topicBase: 'tandung_ff/shop',
+    enabled: true
+};
+
 function getMqttConfig() {
-    return {
-        broker: 'broker.emqx.io',
-        port: 8084,
-        clientId: 'ff_shop_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6),
-        username: '',
-        password: '',
-        topicBase: 'tandung_ff/shop',
-        enabled: true
-    };
+    return { ...MQTT_CONFIG };
 }
 
 function initMqttClient() {
@@ -631,6 +640,7 @@ function initMqttClient() {
                 `${config.topicBase}/deposit`,
                 `${config.topicBase}/deposit_updated`,
                 `${config.topicBase}/deposit_approved`,
+                `${config.topicBase}/deposit_request/+`,
                 `${config.topicBase}/files_sync`,
                 `${config.topicBase}/user_sync`,
                 `${config.topicBase}/giftcode_sync`,
@@ -647,7 +657,10 @@ function initMqttClient() {
             ];
             topics.forEach(topic => { mqttClient.subscribe(topic, { qos: 1 }); });
             mqttClient.publish(`${config.topicBase}/status`, JSON.stringify({ status: 'online', clientId: config.clientId, timestamp: Date.now(), isAdmin: APP.isAdmin }), { qos: 1, retain: true });
-            setTimeout(publishFullState, 1500);
+            flushMqttQueue();
+            if (APP.isAdmin === true) {
+                setTimeout(() => { publishFullState({ force: true, silent: true }); forceSyncToAllUsers(true); }, 1200);
+            }
         });
         mqttClient.on('message', (topic, message) => {
             try { const payload = JSON.parse(message.toString()); handleMqttMessage(topic, payload); } catch (e) {}
@@ -663,25 +676,37 @@ function initMqttClient() {
     }
 }
 
-function publishMqtt(topic, payload) {
+function publishMqtt(topic, payload, mqttOptions = {}) {
     const config = getMqttConfig();
     if (!config.enabled || !mqttClient || !mqttClient.connected) {
         if (!window._mqttQueue) window._mqttQueue = [];
-        window._mqttQueue.push({ topic, payload });
+        window._mqttQueue.push({ topic, payload, mqttOptions });
         if (!mqttConnected) setTimeout(initMqttClient, 1000);
-        return;
+        return false;
     }
     const fullTopic = `${config.topicBase}/${topic}`;
-    const message = JSON.stringify({ ...payload, sender: config.clientId, senderIsAdmin: APP.isAdmin, timestamp: Date.now() });
-    mqttClient.publish(fullTopic, message, { qos: 1, retain: false });
+    const message = JSON.stringify({ ...payload, sender: config.clientId, senderIsAdmin: APP.isAdmin === true, timestamp: Date.now() });
+    mqttClient.publish(fullTopic, message, { qos: 1, retain: false, ...mqttOptions });
+    return true;
+}
+
+function flushMqttQueue() {
+    if (!mqttClient || !mqttClient.connected || !window._mqttQueue?.length) return;
+    const queue = window._mqttQueue.splice(0);
+    queue.forEach(item => publishMqtt(item.topic, item.payload, item.mqttOptions || {}));
+    console.log(`📤 MQTT: đã gửi ${queue.length} message đang chờ`);
 }
 
 function handleMqttMessage(topic, payload) {
     const config = getMqttConfig();
     const baseTopic = config.topicBase;
     if (payload.sender === config.clientId) return;
-    if (payload.timestamp && Date.now() - payload.timestamp > 30000) return;
-    handleSyncMessage({ ...payload, action: topic.replace(`${baseTopic}/`, '') });
+    const action = topic.replace(`${baseTopic}/`, '');
+    // Deposit requests are retained per-request so an admin that reconnects
+    // later can still receive them. Do not discard retained request messages
+    // merely because their timestamp is older than the normal event window.
+    if (!action.startsWith('deposit_request/') && payload.timestamp && Date.now() - payload.timestamp > 30000) return;
+    handleSyncMessage({ ...payload, action });
 }
 
 // ============================================================
@@ -792,8 +817,57 @@ function handleSyncMessage(data) {
             }
         }
 
-        // === DEPOSIT - FIX CỘNG TIỀN CHÍNH XÁC (CÓ KIỂM TRA TRÙNG) ===
-        if (action === 'deposit_approved' || action === 'deposit_updated' || action === 'deposit') {
+        // === DEPOSIT REQUEST - USER -> ADMIN ===
+        if (action === 'deposit' || action.startsWith('deposit_request/')) {
+            try {
+                if (data.status === 'pending' && data.userId && data.requestId) {
+                    if (APP.isAdmin) {
+                        const users = Auth.getUsers();
+                        let user = users.find(u => u.id === data.userId);
+                        // Nếu admin chưa có user này, không tự tạo user giả.
+                        // Chờ full user sync từ admin khác hoặc báo để kiểm tra.
+                        if (user) {
+                            user.depositRequests = Array.isArray(user.depositRequests) ? user.depositRequests : [];
+                            const exists = user.depositRequests.find(r => r.id === data.requestId);
+                            if (!exists) {
+                                user.depositRequests.push({
+                                    id: data.requestId,
+                                    userId: data.userId,
+                                    username: data.username || user.username,
+                                    amount: Number(data.amount || 0),
+                                    method: data.method || 'Unknown',
+                                    status: 'pending',
+                                    createdAt: data.createdAt || new Date().toISOString()
+                                });
+                                Auth.saveUsers(users);
+                            }
+                            renderDepositRequests();
+                            renderAdminDashboard();
+                            renderAdminUsers();
+                            updateRealStats();
+                            const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
+                            if (DOM.pendingBadge) {
+                                DOM.pendingBadge.textContent = pendingCount;
+                                DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`;
+                            }
+                            showToast(`📢 Yêu cầu nạp ${Number(data.amount || 0).toLocaleString()}đ từ ${user.username}!`, 'fas fa-bell', 'warning');
+                            forceSyncToAllUsers(true);
+                        } else {
+                            console.warn('⚠️ Admin chưa có user nhận request:', data.userId);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Deposit request sync error:', e);
+            } finally {
+                _isSyncProcessing = false;
+                processSyncQueue();
+            }
+            return;
+        }
+
+        // === DEPOSIT APPROVAL / UPDATE ===
+        if (action === 'deposit_approved' || action === 'deposit_updated') {
             try {
                 if (data.status === 'approved' || data.action === 'approved') {
                     // KIỂM TRA TRÙNG LẶP
@@ -883,6 +957,23 @@ function handleSyncMessage(data) {
                         forceSyncToAllUsers(true);
                     }
                 }
+                if (data.status === 'rejected' || data.action === 'rejected') {
+                    const users = Auth.getUsers();
+                    const user = users.find(u => u.id === data.userId);
+                    if (user) {
+                        const req = (user.depositRequests || []).find(r => r.id === data.requestId);
+                        if (req) {
+                            req.status = 'rejected';
+                            req.note = data.reason || data.note || 'Bị từ chối';
+                            req.updatedAt = new Date().toISOString();
+                            Auth.saveUsers(users);
+                            if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
+                                showToast(`❌ Yêu cầu nạp ${Number(data.amount || 0).toLocaleString()}đ đã bị từ chối.`, 'fas fa-times-circle', 'error');
+                            }
+                        }
+                    }
+                }
+
                 if (data.status === 'pending' || data.action === 'pending') {
                     if (APP.isAdmin) {
                         renderDepositRequests();
@@ -899,7 +990,6 @@ function handleSyncMessage(data) {
                     if (APP.isAdmin) {
                         renderDepositRequests();
                         renderAdminDashboard();
-                        showToast(`📢 ${data.username || 'User'} đã bị từ chối!`, 'fas fa-bell', 'warning');
                     }
                 }
             } catch(e) {
@@ -914,7 +1004,26 @@ function handleSyncMessage(data) {
         // === USER ===
         if (action.includes('user')) {
             try {
-                if (APP.isAdmin) { renderAdminUsers(); renderAdminDashboard(); }
+                // Admin is the central writer for the shared user directory.
+                // When a user registers/updates, merge the individual record into
+                // the admin's local directory instead of waiting for a full-state sync.
+                if (APP.isAdmin && data.user) {
+                    const users = Auth.getUsers();
+                    const incoming = { ...data.user };
+                    const idx = users.findIndex(u => u.id === incoming.id);
+                    if (data.action === 'created' && idx === -1) {
+                        users.push(incoming);
+                        Auth.saveUsers(users);
+                    } else if ((data.action === 'updated' || data.action === 'unlocked' || data.action === 'locked') && idx !== -1) {
+                        users[idx] = { ...users[idx], ...incoming };
+                        Auth.saveUsers(users);
+                    }
+                    renderAdminUsers();
+                    renderAdminDashboard();
+                } else if (APP.isAdmin && data.action === 'created' && data.userId) {
+                    renderAdminUsers();
+                    renderAdminDashboard();
+                }
                 if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
                     if (data.action === 'locked') { 
                         Auth.logout(); 
@@ -1680,9 +1789,8 @@ const Auth = {
         this.saveUsers(users);
         sendWebhook('new_user', { username, email });
         if (!_isSyncProcessing) {
-            publishMqtt('user_sync', { action: 'created', user: newUser });
-            broadcastSync({ type: 'user_sync', action: 'created', user: newUser });
-            forceSyncToAllUsers(true);
+            publishMqtt('user_sync', { action: 'created', userId: newUser.id, user: newUser });
+            broadcastSync({ type: 'user_sync', action: 'created', userId: newUser.id, user: newUser });
         }
         return { success: true, message: 'Đăng ký thành công!', user: newUser };
     },
@@ -1822,13 +1930,21 @@ const Auth = {
         };
         user.depositRequests.push(request);
         this.saveUsers(users);
-        const syncData = { status: 'pending', userId: user.id, username: user.username, amount: amount, method: method, requestId: request.id };
-        if (!_isSyncProcessing) {
-            publishMqtt('deposit', syncData);
-            broadcastSync({ type: 'deposit', ...syncData });
-            sendWebhook('deposit_request', { userId, username: user.username, amount, method });
-            forceSyncToAllUsers(true);
-        }
+        const syncData = {
+            status: 'pending',
+            userId: user.id,
+            username: user.username,
+            amount: Number(amount),
+            method: method,
+            requestId: request.id,
+            createdAt: request.createdAt,
+            request: request
+        };
+        // User gửi yêu cầu trực tiếp tới kênh admin. Không dùng full-state ở đây.
+        publishMqtt(`deposit_request/${request.id}`, syncData, { qos: 1, retain: true });
+        publishMqtt('deposit', syncData, { qos: 1, retain: false });
+        broadcastSync({ type: 'deposit_request', ...syncData });
+        sendWebhook('deposit_request', { userId, username: user.username, amount, method, requestId: request.id });
         if (APP.isAdmin) {
             setTimeout(() => {
                 renderDepositRequests();
@@ -2056,8 +2172,7 @@ const Auth = {
         const idx = user.depositRequests.findIndex(r => r.id === requestId);
         if (idx === -1) return null;
         user.depositRequests.splice(idx, 1);
-        this.saveUsers(users);
-        forceSyncToAllUsers(true);
+        this.saveUsers(this.getUsers());
         return true;
     },
     
