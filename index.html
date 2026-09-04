@@ -5,22 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SHOP TẤN DŨNG - Kho File & Tool Giao Dịch Nhanh Tự Động</title>
     <link rel="shortcut icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
-    
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800;14..32,900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <!-- ========== ANTI-DEBUG + ANTI-F12 + ANTI-DDOS BLOCKER ========== -->
     <div id="securityBlocker" style="display:none;"></div>
-    
-    <!-- ========== NOISE CANVAS FOR ANTI-DEBUG ========== -->
     <canvas id="noiseCanvas" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;pointer-events:none;opacity:0.03;"></canvas>
 
     <!-- CUSTOM CURSOR -->
@@ -44,7 +39,8 @@
         <span id="cartCount">0</span>
     </div>
 
-    <!-- ========== MODAL ĐĂNG NHẬP ========== -->
+    <!-- ========== MODALS ========== -->
+    <!-- Login Modal -->
     <div class="modal-overlay" id="loginModal">
         <div class="modal-box">
             <span class="modal-close" data-modal="loginModal">&times;</span>
@@ -73,7 +69,7 @@
         </div>
     </div>
 
-    <!-- ========== MODAL ĐĂNG KÝ ========== -->
+    <!-- Register Modal -->
     <div class="modal-overlay" id="registerModal">
         <div class="modal-box">
             <span class="modal-close" data-modal="registerModal">&times;</span>
@@ -112,7 +108,7 @@
         </div>
     </div>
 
-    <!-- ========== MODAL ĐÁNH GIÁ ========== -->
+    <!-- Review Modal -->
     <div class="modal-overlay" id="reviewModal">
         <div class="modal-box" style="max-width:500px;">
             <span class="modal-close" data-modal="reviewModal">&times;</span>
@@ -149,12 +145,11 @@
         </div>
     </div>
 
-    <!-- ========== MODAL NẠP TIỀN ========== -->
+    <!-- Deposit Modal -->
     <div class="modal-overlay" id="depositModal">
         <div class="modal-box" style="max-width:600px;">
             <span class="modal-close" data-modal="depositModal">&times;</span>
             <h2><i class="fas fa-wallet"></i> Nạp Tiền <span style="font-size:12px;color:#ffaa00;">(Tối đa 1.000.000đ)</span></h2>
-            
             <div class="vip-banner" id="vipBanner">
                 <i class="fas fa-crown" style="color:#ffd700;"></i>
                 <div>
@@ -162,14 +157,12 @@
                     <span id="vipDiscountText">Giảm 0%</span>
                 </div>
             </div>
-
             <div style="background:rgba(255,170,0,0.1);border:1px solid rgba(255,170,0,0.2);border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
                 <i class="fas fa-exclamation-triangle" style="color:#ffaa00;font-size:20px;"></i>
                 <div style="font-size:13px;color:var(--text-muted);">
                     <b style="color:#ffaa00;">LƯU Ý:</b> Khi chuyển khoản, <b style="color:var(--text-main);">nội dung chuyển khoản PHẢI GHI ĐÚNG tên đăng nhập của bạn</b>. Nếu sai, admin sẽ từ chối duyệt!
                 </div>
             </div>
-
             <form id="depositForm" onsubmit="handleDepositSubmit(event)">
                 <div class="form-group">
                     <label><i class="fas fa-credit-card"></i> Phương thức</label>
@@ -190,7 +183,6 @@
                         </label>
                     </div>
                 </div>
-
                 <div class="form-group">
                     <label><i class="fas fa-coins"></i> Chọn mệnh giá (Tối đa 1.000.000đ)</label>
                     <div class="amount-presets" id="amountPresets">
@@ -202,7 +194,6 @@
                         <button type="button" class="preset-btn" data-amount="1000000">1.000.000đ</button>
                     </div>
                 </div>
-
                 <div class="form-group">
                     <label><i class="fas fa-pen"></i> Nhập số tiền (VNĐ) <span style="color:#ffaa00;font-size:11px;">(10.000 - 1.000.000)</span></label>
                     <input type="number" id="depositAmount" class="form-control" placeholder="Nhập số tiền..." min="10000" max="1000000" step="1000" required>
@@ -210,22 +201,18 @@
                         <i class="fas fa-exclamation-circle"></i> Số tiền vượt quá giới hạn 1.000.000đ!
                     </div>
                 </div>
-
                 <div style="background:rgba(0,240,255,0.06);border:1px solid rgba(0,240,255,0.15);border-radius:10px;padding:10px 14px;margin:8px 0;display:flex;align-items:center;gap:10px;">
                     <i class="fas fa-user" style="color:var(--primary);"></i>
                     <span style="font-size:13px;color:var(--text-muted);">Tên đăng nhập của bạn: <b style="color:var(--text-main);" id="depositUsernameDisplay">Chưa đăng nhập</b></span>
                 </div>
-
                 <div class="vip-bonus-info" id="vipBonusInfo">
                     <i class="fas fa-gift" style="color:#00ff88;"></i>
                     <span>Nạp hôm nay nhận ngay <b id="vipBonusAmount">0</b>đ tiền thưởng!</span>
                 </div>
-
                 <button type="submit" class="btn-submit" id="createDepositBtn">
                     <i class="fas fa-qrcode"></i> Tạo QR & Yêu Cầu Nạp
                 </button>
             </form>
-
             <div id="qrPaymentSection" style="display:none;">
                 <div class="qr-container">
                     <div class="qr-header">
@@ -258,7 +245,7 @@
         </div>
     </div>
 
-    <!-- ========== MODAL CHI TIẾT FILE ========== -->
+    <!-- File Detail Modal -->
     <div class="modal-overlay" id="fileDetailModal">
         <div class="modal-box" style="max-width:550px;">
             <span class="modal-close" data-modal="fileDetailModal">&times;</span>
@@ -272,7 +259,7 @@
         </div>
     </div>
 
-    <!-- ========== MODAL CHỈNH SỬA FILE (ADMIN) ========== -->
+    <!-- Admin Edit File Modal -->
     <div class="modal-overlay" id="adminEditFileModal">
         <div class="modal-box" style="max-width:550px;">
             <span class="modal-close" data-modal="adminEditFileModal">&times;</span>
@@ -321,7 +308,7 @@
         </div>
     </div>
 
-    <!-- ========== MODAL USER DASHBOARD ========== -->
+    <!-- User Dashboard Modal -->
     <div class="modal-overlay" id="userDashboardModal">
         <div class="modal-box" style="max-width:700px;">
             <span class="modal-close" data-modal="userDashboardModal">&times;</span>
@@ -330,7 +317,7 @@
         </div>
     </div>
 
-    <!-- ========== MODAL THÀNH TÍCH ========== -->
+    <!-- Achievements Modal -->
     <div class="modal-overlay" id="achievementsModal">
         <div class="modal-box" style="max-width:650px;">
             <span class="modal-close" data-modal="achievementsModal">&times;</span>
@@ -343,8 +330,8 @@
     <header>
         <div class="logo-area" onclick="switchTab('homeTab')">
             <i class="fas fa-crosshairs"></i>
-            <h1>SHOP TẤN DŨNG </h1>
-            <span class="version-badge">NHANH CHÓNG & AN TOÀN </span>
+            <h1>SHOP TẤN DŨNG</h1>
+            <span class="version-badge">NHANH CHÓNG & AN TOÀN</span>
         </div>
         <nav>
             <ul class="nav-links" id="navLinks">
@@ -465,12 +452,11 @@
             </div>
         </div>
 
-        <!-- ========== KHO FILE ========== -->
+        <!-- ========== FILES TAB ========== -->
         <div id="filesTab" class="tab-content">
             <div class="page-section-container" style="max-width:1320px;">
                 <div class="page-card-box">
                     <h2><i class="fas fa-folder-tree"></i> Kho File & Tool <span style="font-size:14px;color:var(--text-muted);">(Cập nhật liên tục)</span></h2>
-                    
                     <div class="file-filter-bar">
                         <div class="file-search">
                             <i class="fas fa-search"></i>
@@ -502,9 +488,7 @@
                             </select>
                         </div>
                     </div>
-
                     <div class="file-grid-container" id="fileGridContainer"></div>
-                    
                     <div class="file-pagination" id="filePagination">
                         <button onclick="changeFilePage(-1)"><i class="fas fa-chevron-left"></i></button>
                         <span id="filePageInfo">Trang 1 / 1</span>
@@ -514,7 +498,7 @@
             </div>
         </div>
 
-        <!-- ========== GIỎ HÀNG TAB ========== -->
+        <!-- ========== CART TAB ========== -->
         <div id="cartTab" class="tab-content">
             <div class="page-section-container" style="max-width:900px;">
                 <div class="page-card-box">
@@ -537,14 +521,12 @@
             <div class="page-section-container" style="max-width:1000px;">
                 <div class="page-card-box text-center">
                     <h2><i class="fas fa-dharmachakra"></i> Vòng Quay May Mắn <span style="font-size:14px;color:var(--text-muted);">(10.000đ/lần)</span></h2>
-                    
                     <div class="spin-stats-bar">
                         <div class="spin-stat"><span><i class="fas fa-rotate-right"></i> Lượt quay:</span> <b id="spinCountToday">0</b></div>
                         <div class="spin-stat"><span><i class="fas fa-trophy"></i> Đã trúng:</span> <b id="spinWinCount">0</b></div>
                         <div class="spin-stat"><span><i class="fas fa-fire"></i> Hên nhất:</span> <b id="spinLuckiest">Chưa có</b></div>
                         <div class="spin-stat"><span><i class="fas fa-coins"></i> Đã quay:</span> <b id="spinTotalSpent">0đ</b></div>
                     </div>
-
                     <div class="wheel-container">
                         <div style="position:relative;display:inline-block;">
                             <div class="wheel-pointer"><i class="fas fa-caret-down"></i></div>
@@ -555,7 +537,6 @@
                             </div>
                         </div>
                     </div>
-
                     <div class="spin-history" id="spinHistory">
                         <h4><i class="fas fa-clock-rotate-left"></i> Lịch sử quay</h4>
                         <div id="spinHistoryList"></div>
@@ -604,14 +585,12 @@
             <div class="page-section-container" style="max-width:650px;">
                 <div class="page-card-box">
                     <h2><i class="fas fa-wallet"></i> Nạp Tiền <span style="font-size:12px;color:#ffaa00;">(Tối đa 1.000.000đ/lần)</span></h2>
-                    
                     <div style="background:rgba(255,170,0,0.1);border:1px solid rgba(255,170,0,0.2);border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
                         <i class="fas fa-exclamation-triangle" style="color:#ffaa00;font-size:20px;"></i>
                         <div style="font-size:13px;color:var(--text-muted);">
                             <b style="color:#ffaa00;">QUAN TRỌNG:</b> Nội dung chuyển khoản PHẢI GHI ĐÚNG <b style="color:var(--text-main);" id="depositPageUsername">tên đăng nhập</b> của bạn. Sai tên sẽ bị từ chối!
                         </div>
                     </div>
-
                     <div class="vip-banner deposit-banner" id="depositVipBanner">
                         <i class="fas fa-crown" style="color:#ffd700;font-size:20px;"></i>
                         <div>
@@ -619,7 +598,6 @@
                             <span id="depositVipDiscount">Giảm 0%</span>
                         </div>
                     </div>
-
                     <div class="deposit-quick-actions">
                         <button onclick="openDepositWithMethod('Momo')" style="background:rgba(165,0,100,0.15);border:1px solid #a50064;border-radius:12px;padding:14px 20px;color:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;flex:1;">
                             <i class="fas fa-wallet" style="color:#a50064;font-size:20px;"></i>
@@ -630,7 +608,6 @@
                             <span>Nạp qua <strong>MB Bank</strong></span>
                         </button>
                     </div>
-
                     <form id="depositPageForm" onsubmit="handleDepositPage(event)" style="margin-top:20px;">
                         <div class="form-group">
                             <label><i class="fas fa-credit-card"></i> Phương thức</label>
@@ -660,7 +637,7 @@
             </div>
         </div>
 
-        <!-- ========== LỊCH SỬ ========== -->
+        <!-- HISTORY TAB -->
         <div id="historyTab" class="tab-content">
             <div class="page-section-container">
                 <div class="page-card-box">
@@ -678,7 +655,6 @@
             <div class="page-section-container" style="max-width:900px;">
                 <div class="page-card-box">
                     <h2><i class="fas fa-crown" style="color:#ffd700;"></i> Hệ Thống VIP</h2>
-                    
                     <div class="vip-user-info" id="vipUserInfo">
                         <div class="vip-avatar">
                             <img src="https://i.pravatar.cc/120?img=11" alt="Avatar" id="vipAvatar">
@@ -699,7 +675,6 @@
                             </div>
                         </div>
                     </div>
-
                     <div class="vip-levels">
                         <div class="vip-level-card active" data-level="0">
                             <div class="vip-level-icon"><i class="fas fa-user"></i></div>
@@ -738,7 +713,6 @@
                             <div class="vip-level-requirement">3.000.000đ</div>
                         </div>
                     </div>
-
                     <div class="vip-benefits">
                         <h4><i class="fas fa-gift" style="color:#ffd700;"></i> Quyền lợi VIP</h4>
                         <div class="benefits-grid">
@@ -759,13 +733,11 @@
             <div class="page-section-container" style="max-width:900px;">
                 <div class="page-card-box">
                     <h2><i class="fas fa-star" style="color:#ffd700;"></i> Đánh Giá</h2>
-                    
                     <div class="review-stats">
                         <div class="review-stat-box"><div class="review-stat-number" id="reviewTotal">0</div><div class="review-stat-label">Tổng đánh giá</div></div>
                         <div class="review-stat-box"><div class="review-stat-number" id="reviewAvg">0 ★</div><div class="review-stat-label">Trung bình</div></div>
                         <div class="review-stat-box"><div class="review-stat-number" id="reviewWithImages">0</div><div class="review-stat-label">Có ảnh</div></div>
                     </div>
-
                     <div class="review-filter">
                         <select id="reviewFilterProduct" onchange="renderReviews()"><option value="all">Tất cả file</option></select>
                         <select id="reviewFilterRating" onchange="renderReviews()">
@@ -780,7 +752,6 @@
                             <i class="fas fa-plus"></i> Viết đánh giá
                         </button>
                     </div>
-
                     <div id="reviewsContainer"></div>
                 </div>
             </div>
@@ -792,13 +763,11 @@
                 <div class="page-card-box">
                     <h2><i class="fas fa-trophy" style="color:#ff6b00;"></i> Bảng Xếp Hạng Top Nạp</h2>
                     <p style="color:var(--text-muted);margin-bottom:20px;">Top người dùng nạp tiền nhiều nhất hệ thống</p>
-                    
                     <div class="top-filter">
                         <button class="btn-filter active" data-period="all" onclick="renderTopRanking('all')">Tất cả</button>
                         <button class="btn-filter" data-period="month" onclick="renderTopRanking('month')">Tháng này</button>
                         <button class="btn-filter" data-period="week" onclick="renderTopRanking('week')">Tuần này</button>
                     </div>
-
                     <div id="topRankingContainer"><div class="top-list" id="topList"></div></div>
                 </div>
             </div>
@@ -810,7 +779,6 @@
                 <div class="page-card-box text-center">
                     <h2><i class="fas fa-headset"></i> Hỗ Trợ Khách Hàng</h2>
                     <p style="color:var(--text-muted);margin-bottom:25px;">Liên hệ với chúng tôi qua các kênh hỗ trợ bên dưới</p>
-                    
                     <div class="support-grid">
                         <a href="#" onclick="openSupportLink('zalo')" class="support-card" id="supportZalo">
                             <i class="fab fa-zalo"></i>
@@ -834,7 +802,6 @@
                             </div>
                         </a>
                     </div>
-
                     <div style="margin-top:20px;padding:16px;background:rgba(255,255,255,0.02);border-radius:12px;border:1px solid rgba(255,255,255,0.05);">
                         <p style="color:var(--text-muted);font-size:13px;">
                             <i class="fas fa-clock" style="color:var(--primary);"></i> 
@@ -882,6 +849,89 @@
                     <button class="admin-tab-btn" data-tab="adminSupport" onclick="switchAdminTab('adminSupport')"><i class="fas fa-headset"></i> Hỗ trợ</button>
                     <button class="admin-tab-btn" data-tab="adminSettings" onclick="switchAdminTab('adminSettings')"><i class="fas fa-gear"></i> Cài đặt</button>
                     <button class="admin-tab-btn" data-tab="adminSecurity" onclick="switchAdminTab('adminSecurity')"><i class="fas fa-shield-halved" style="color:#00ff88;"></i> Bảo mật</button>
+                    <button class="admin-tab-btn" data-tab="adminCommands" onclick="switchAdminTab('adminCommands')"><i class="fas fa-terminal" style="color:#ff6b00;"></i> Lệnh admin</button>
+                </div>
+
+                <!-- ====== ADMIN COMMANDS TAB ====== -->
+                <div class="admin-tab-content" id="adminCommands">
+                    <div class="admin-section">
+                        <div class="admin-section-header">
+                            <h3><i class="fas fa-terminal" style="color:#ff6b00;"></i> Bảng Điều Khiển Lệnh Admin</h3>
+                            <span style="font-size:12px;color:var(--text-muted);">Các lệnh sẽ được đồng bộ tới tất cả admin</span>
+                        </div>
+                        <div class="admin-commands-grid">
+                            <!-- Hàng 1: Đồng bộ & Backup -->
+                            <button class="admin-cmd-btn primary" onclick="adminCommand('sync_all')">
+                                <i class="fas fa-sync-alt"></i> Đồng bộ toàn bộ
+                            </button>
+                            <button class="admin-cmd-btn success" onclick="adminCommand('backup')">
+                                <i class="fas fa-save"></i> Backup
+                            </button>
+                            <button class="admin-cmd-btn warning" onclick="adminCommand('restore')">
+                                <i class="fas fa-undo"></i> Restore
+                            </button>
+                            <button class="admin-cmd-btn danger" onclick="adminCommand('reset')">
+                                <i class="fas fa-radiation"></i> Reset
+                            </button>
+                            <button class="admin-cmd-btn info" onclick="adminCommand('force_sync')">
+                                <i class="fas fa-bolt"></i> Force Sync
+                            </button>
+                            <button class="admin-cmd-btn secondary" onclick="adminCommand('maintenance')">
+                                <i class="fas fa-tools"></i> Bảo trì
+                            </button>
+
+                            <!-- Hàng 2: Quản lý user -->
+                            <button class="admin-cmd-btn danger" onclick="adminCommand('ban_user')">
+                                <i class="fas fa-ban"></i> Khóa user
+                            </button>
+                            <button class="admin-cmd-btn success" onclick="adminCommand('unban_user')">
+                                <i class="fas fa-unlock"></i> Mở khóa user
+                            </button>
+                            <button class="admin-cmd-btn primary" onclick="adminCommand('add_balance')">
+                                <i class="fas fa-plus-circle"></i> Cộng tiền
+                            </button>
+
+                            <!-- Hàng 3: Quản lý file -->
+                            <button class="admin-cmd-btn primary" onclick="adminCommand('create_file')">
+                                <i class="fas fa-plus"></i> Tạo file
+                            </button>
+                            <button class="admin-cmd-btn danger" onclick="adminCommand('delete_file')">
+                                <i class="fas fa-trash"></i> Xóa file
+                            </button>
+
+                            <!-- Hàng 4: Giftcode -->
+                            <button class="admin-cmd-btn success" onclick="adminCommand('create_giftcode')">
+                                <i class="fas fa-ticket"></i> Tạo giftcode
+                            </button>
+                            <button class="admin-cmd-btn danger" onclick="adminCommand('delete_giftcode')">
+                                <i class="fas fa-ticket-alt"></i> Xóa giftcode
+                            </button>
+
+                            <!-- Hàng 5: Sự kiện -->
+                            <button class="admin-cmd-btn info" onclick="adminCommand('create_event')">
+                                <i class="fas fa-calendar-plus"></i> Tạo sự kiện
+                            </button>
+                            <button class="admin-cmd-btn danger" onclick="adminCommand('delete_event')">
+                                <i class="fas fa-calendar-minus"></i> Xóa sự kiện
+                            </button>
+
+                            <!-- Hàng 6: Duyệt nạp -->
+                            <button class="admin-cmd-btn success" onclick="adminCommand('approve_deposit')">
+                                <i class="fas fa-check-circle"></i> Duyệt nạp
+                            </button>
+                            <button class="admin-cmd-btn danger" onclick="adminCommand('reject_deposit')">
+                                <i class="fas fa-times-circle"></i> Từ chối nạp
+                            </button>
+                        </div>
+
+                        <!-- Lịch sử lệnh -->
+                        <div style="margin-top:24px;">
+                            <h4 style="color:var(--primary);margin-bottom:12px;"><i class="fas fa-history"></i> Lịch sử lệnh admin</h4>
+                            <div id="adminCommandLog" style="background:rgba(0,0,0,0.3);border-radius:12px;padding:12px 16px;max-height:200px;overflow-y:auto;font-family:monospace;font-size:12px;color:var(--text-muted);">
+                                <div>🟢 Hệ thống sẵn sàng...</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Admin Dashboard -->
@@ -1043,23 +1093,20 @@
                     </div>
                 </div>
 
-                <!-- Admin Settings - CÀI ĐẶT (BAO GỒM QR ẢNH) -->
+                <!-- Admin Settings -->
                 <div class="admin-tab-content" id="adminSettings">
                     <div class="admin-section">
                         <div class="admin-section-header"><h3><i class="fas fa-gear"></i> Cài Đặt Hệ Thống</h3></div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-                            <!-- Giới hạn nạp -->
                             <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:20px;">
                                 <h4 style="color:var(--primary);margin-bottom:12px;">Giới hạn nạp</h4>
                                 <div class="form-group"><label>Số tiền tối đa (VNĐ)</label><input type="number" id="adminMaxDeposit" class="form-control" value="1000000" min="10000"></div>
                                 <button class="btn-submit" style="width:auto;padding:8px 20px;" onclick="adminSaveSettings()"><i class="fas fa-save"></i> Lưu</button>
                             </div>
-
-                            <!-- Thông tin hệ thống -->
                             <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:20px;">
                                 <h4 style="color:var(--primary);margin-bottom:12px;">Thông tin hệ thống</h4>
                                 <div style="color:var(--text-muted);font-size:13px;line-height:2;">
-                                    <div>Phiên bản: <b style="color:var(--text-main);">v16.0 Pro</b></div>
+                                    <div>Phiên bản: <b style="color:var(--text-main);">v31.0 Pro</b></div>
                                     <div>Người dùng: <b style="color:var(--text-main);" id="adminSystemUsers">0</b></div>
                                     <div>Tổng giao dịch: <b style="color:var(--text-main);" id="adminSystemTransactions">0</b></div>
                                     <div>VIP Users: <b style="color:var(--text-main);" id="adminSystemVIP">0</b></div>
@@ -1068,8 +1115,6 @@
                                 </div>
                             </div>
                         </div>
-
-                        <!-- QR CODE CONFIG - UPLOAD ẢNH -->
                         <div style="background:rgba(0,240,255,0.03);border:1px solid rgba(0,240,255,0.1);border-radius:16px;padding:20px;margin-top:20px;">
                             <h4 style="color:var(--primary);margin-bottom:12px;"><i class="fas fa-qrcode"></i> Cài Đặt QR Code (Nạp Tiền)</h4>
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
@@ -1182,10 +1227,9 @@
         <i class="fas fa-arrow-up"></i>
     </div>
 
-    <!-- ===== LOAD SCRIPT CHÍNH ===== -->
-    <script src="script.js?v=sync-v6"></script>
+    <!-- ===== LOAD SCRIPTS ===== -->
+    <script src="script.js"></script>
     
-    <!-- ===== KHỞI TẠO SYNC SAU KHI SCRIPT LOAD ===== -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             if (window.SYNC && typeof SYNC.init === 'function') {
