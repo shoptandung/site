@@ -1,10 +1,10 @@
 // ============================================================
-//  SHOP TẤN DŨNG FF - ULTIMATE SYNC v33.0 
-//  MQTT SYNC HOÀN CHỈNH - FIX 100%
+//  SHOP TẤN DŨNG FF - ULTIMATE SYNC v31.0 FIX DEPOSIT
+//  TOÀN BỘ CODE JS HOÀN CHỈNH
 // ============================================================
 
 // ============================================================
-//  TOAST CONTROLLER
+//  TOAST CONTROLLER - CHỐNG SPAM
 // ============================================================
 let toastDebounce = {};
 let _isSyncProcessing = false;
@@ -12,16 +12,36 @@ let _lastToastTime = 0;
 
 function showToast(message, iconClass = 'fas fa-bell', type = '') {
     try {
+        const syncKeywords = ['đồng bộ', 'sync', 'bảo trì'];
+        for (let kw of syncKeywords) {
+            if (message.toLowerCase().includes(kw)) {
+                if (_isSyncProcessing) {
+                    console.log('🔇 Ẩn toast đồng bộ:', message);
+                    return;
+                }
+            }
+        }
+
         const now = Date.now();
         if (now - _lastToastTime < 1000) {
             console.log('🔇 Toast quá nhanh, bỏ qua:', message);
             return;
         }
+
         const key = message.substring(0, 30);
-        if (toastDebounce[key] && now - toastDebounce[key] < 5000) return;
+        if (toastDebounce[key] && now - toastDebounce[key] < 5000) {
+            return;
+        }
         toastDebounce[key] = now;
         _lastToastTime = now;
         
+        const keys = Object.keys(toastDebounce);
+        if (keys.length > 50) {
+            keys.forEach(k => {
+                if (now - toastDebounce[k] > 5000) delete toastDebounce[k];
+            });
+        }
+
         let container = document.getElementById('toast-container');
         if (!container) {
             container = document.createElement('div');
@@ -63,6 +83,60 @@ function showToast(message, iconClass = 'fas fa-bell', type = '') {
         }, 3600);
     } catch(e) {}
 }
+
+// ============================================================
+//  SECURITY LOG
+// ============================================================
+function securityLog(message) {
+    try {
+        const logContainer = document.getElementById('securityLog');
+        if (!logContainer) {
+            const newLog = document.createElement('div');
+            newLog.id = 'securityLog';
+            newLog.style.cssText = 'display:none;';
+            document.body.appendChild(newLog);
+            return;
+        }
+        const entry = document.createElement('div');
+        const time = new Date().toLocaleString();
+        entry.textContent = `[${time}] ${message}`;
+        logContainer.prepend(entry);
+        while (logContainer.children.length > 50) logContainer.removeChild(logContainer.lastChild);
+    } catch(e) {}
+}
+
+// ============================================================
+//  ANTI-COPY PRO
+// ============================================================
+document.addEventListener('gesturestart', function(e) { e.preventDefault(); return false; });
+document.addEventListener('touchmove', function(e) {
+    if (e.touches && e.touches.length > 1) { e.preventDefault(); return false; }
+}, { passive: false });
+
+(function antiCopyPro() {
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && (e.key === 'c' || e.key === 'C' || e.key === 'x' || e.key === 'X' || e.key === 'v' || e.key === 'V' || e.key === 'a' || e.key === 'A')) {
+            e.preventDefault(); e.stopPropagation();
+            securityLog('⚠️ Phát hiện Copy/Paste/Select - Đã chặn');
+            showToast('🚫 Chức năng này bị vô hiệu hóa!', 'fas fa-shield-halved', 'error');
+            return false;
+        }
+    }, { capture: true, passive: false });
+    document.addEventListener('copy', function(e) { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true, passive: false });
+    document.addEventListener('cut', function(e) { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true, passive: false });
+    document.addEventListener('paste', function(e) { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true, passive: false });
+    document.addEventListener('selectstart', function(e) { e.preventDefault(); return false; }, { capture: true, passive: false });
+    document.addEventListener('dragstart', function(e) { e.preventDefault(); return false; }, { capture: true, passive: false });
+    document.addEventListener('drop', function(e) { e.preventDefault(); return false; }, { capture: true, passive: false });
+    document.addEventListener('mousedown', function(e) {
+        if (e.button === 2) {
+            e.preventDefault();
+            securityLog('⚠️ Phát hiện Right Click - Đã chặn');
+            showToast('🚫 Menu chuột phải bị vô hiệu hóa!', 'fas fa-shield-halved', 'error');
+            return false;
+        }
+    }, { capture: true, passive: false });
+})();
 
 // ============================================================
 //  CONSTANTS
@@ -325,22 +399,22 @@ function resetLoginAttempts(username) {
 // ============================================================
 //  ACTIVITY LOG
 // ============================================================
-function securityLog(message) {
+function logActivity(action) {
     try {
-        const logContainer = document.getElementById('securityLog');
-        if (!logContainer) {
-            const newLog = document.createElement('div');
-            newLog.id = 'securityLog';
-            newLog.style.cssText = 'display:none;';
-            document.body.appendChild(newLog);
-            return;
-        }
-        const entry = document.createElement('div');
-        const time = new Date().toLocaleString();
-        entry.textContent = `[${time}] ${message}`;
-        logContainer.prepend(entry);
-        while (logContainer.children.length > 50) logContainer.removeChild(logContainer.lastChild);
-    } catch(e) {}
+        const logs = JSON.parse(localStorage.getItem(STORAGE_KEY_ACTIVITY) || '[]');
+        logs.unshift({
+            timestamp: new Date().toISOString(),
+            user: APP.isLoggedIn ? APP.currentUser?.username : 'anonymous',
+            action: action,
+            ip: 'local'
+        });
+        if (logs.length > 500) logs.length = 500;
+        localStorage.setItem(STORAGE_KEY_ACTIVITY, JSON.stringify(logs));
+    } catch (e) {}
+}
+function clearActivityLogs() {
+    localStorage.setItem(STORAGE_KEY_ACTIVITY, JSON.stringify([]));
+    showToast('✅ Đã xóa log hoạt động!', 'fas fa-check', 'success');
 }
 
 // ============================================================
@@ -496,37 +570,29 @@ try {
 
 function broadcastSync(data) {
     try {
-        if (syncChannel) syncChannel.postMessage({ ...data, senderIsAdmin: APP.isAdmin === true, timestamp: Date.now() });
-        localStorage.setItem('ff_sync_trigger', Date.now().toString());
+        const msg = { ...data, sender: SYNC_CLIENT_ID, actorUserId: APP.currentUser?.id || null, protocol: SYNC_PROTOCOL_VERSION, messageId: data.messageId || makeMessageId('bc'), timestamp: Date.now() };
+        if (syncChannel) syncChannel.postMessage(msg);
+        localStorage.setItem('ff_sync_trigger', String(msg.timestamp));
     } catch(e) {}
 }
 
 // ============================================================
-//  MQTT SYNC - REAL-TIME TOÀN CẦU - FIX HOÀN CHỈNH
+//  MQTT SYNC - REAL-TIME TOÀN CẦU
 // ============================================================
 let mqttClient = null;
 let mqttConnected = false;
 let _lastSentStateHash = '';
 
-const MQTT_CONFIG = {
-    broker: 'broker.emqx.io',
-    port: 8084,
-    clientId: (() => {
-        let id = sessionStorage.getItem('ff_mqtt_client_id');
-        if (!id) {
-            id = 'ff_shop_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 8);
-            sessionStorage.setItem('ff_mqtt_client_id', id);
-        }
-        return id;
-    })(),
-    username: '',
-    password: '',
-    topicBase: 'tandung_ff/shop',
-    enabled: true
-};
-
 function getMqttConfig() {
-    return { ...MQTT_CONFIG };
+    return {
+        broker: 'broker.emqx.io',
+        port: 8084,
+        clientId: SYNC_CLIENT_ID,
+        username: '',
+        password: '',
+        topicBase: 'tandung_ff/shop',
+        enabled: true
+    };
 }
 
 function initMqttClient() {
@@ -565,8 +631,6 @@ function initMqttClient() {
             const topics = [
                 `${config.topicBase}/deposit`,
                 `${config.topicBase}/deposit_updated`,
-                `${config.topicBase}/deposit_approved`,
-                `${config.topicBase}/deposit_request/+`,
                 `${config.topicBase}/files_sync`,
                 `${config.topicBase}/user_sync`,
                 `${config.topicBase}/giftcode_sync`,
@@ -583,37 +647,19 @@ function initMqttClient() {
             ];
             topics.forEach(topic => { mqttClient.subscribe(topic, { qos: 1 }); });
             mqttClient.publish(`${config.topicBase}/status`, JSON.stringify({ status: 'online', clientId: config.clientId, timestamp: Date.now(), isAdmin: APP.isAdmin }), { qos: 1, retain: true });
-            flushMqttQueue();
-            if (APP.isAdmin === true) {
-                setTimeout(() => { 
-                    publishFullState({ force: true, silent: true }); 
-                    forceSyncToAllUsers(true); 
-                }, 1200);
+            // Flush các event phát sinh lúc MQTT đang mất kết nối.
+            if (Array.isArray(window._mqttQueue) && window._mqttQueue.length) {
+                const queued = window._mqttQueue.splice(0, 100);
+                queued.forEach(item => publishMqtt(item.topic, item.payload, item.options || {}));
             }
+            setTimeout(() => { if (APP.isAdmin) publishFullState({ force: true, silent: true }); else publishSyncRequest(); }, 500);
         });
         mqttClient.on('message', (topic, message) => {
-            try { 
-                const payload = JSON.parse(message.toString()); 
-                console.log('📥 MQTT nhận:', topic, payload);
-                handleMqttMessage(topic, payload); 
-            } catch (e) {
-                console.error('MQTT parse error:', e);
-            }
+            try { const payload = JSON.parse(message.toString()); handleMqttMessage(topic, payload); } catch (e) {}
         });
-        mqttClient.on('error', () => { 
-            mqttConnected = false; 
-            updateSyncStatus('Lỗi kết nối', false); 
-            setTimeout(initMqttClient, 5000); 
-        });
-        mqttClient.on('offline', () => { 
-            mqttConnected = false; 
-            updateSyncStatus('Mất kết nối', false); 
-        });
-        mqttClient.on('close', () => { 
-            mqttConnected = false; 
-            updateSyncStatus('Đã đóng kết nối', false); 
-            setTimeout(initMqttClient, 5000); 
-        });
+        mqttClient.on('error', () => { mqttConnected = false; updateSyncStatus('Lỗi kết nối', false); setTimeout(initMqttClient, 5000); });
+        mqttClient.on('offline', () => { mqttConnected = false; updateSyncStatus('Mất kết nối', false); });
+        mqttClient.on('close', () => { mqttConnected = false; updateSyncStatus('Đã đóng kết nối', false); setTimeout(initMqttClient, 5000); });
         window.mqttClient = mqttClient;
     } catch (error) {
         console.error('📡 MQTT init error:', error);
@@ -622,60 +668,50 @@ function initMqttClient() {
     }
 }
 
-function publishMqtt(topic, payload, mqttOptions = {}) {
+function publishMqtt(topic, payload, publishOptions = {}) {
     const config = getMqttConfig();
+    const message = {
+        ...payload,
+        sender: SYNC_CLIENT_ID,
+        senderIsAdmin: !!APP.isAdmin,
+        authority: APP.isAdmin ? 'admin' : (payload.authority || 'user'),
+        protocol: SYNC_PROTOCOL_VERSION,
+        messageId: payload.messageId || makeMessageId('mqtt'),
+        actorUserId: APP.currentUser?.id || null,
+        timestamp: payload.timestamp || Date.now()
+    };
     if (!config.enabled || !mqttClient || !mqttClient.connected) {
         if (!window._mqttQueue) window._mqttQueue = [];
-        window._mqttQueue.push({ topic, payload, mqttOptions });
-        if (!mqttConnected) setTimeout(initMqttClient, 1000);
+        window._mqttQueue.push({ topic, payload: message, options: publishOptions });
+        if (!mqttConnected) setTimeout(initMqttClient, 500);
         return false;
     }
     const fullTopic = `${config.topicBase}/${topic}`;
-    const message = JSON.stringify({ ...payload, sender: config.clientId, senderIsAdmin: APP.isAdmin === true, timestamp: Date.now() });
-    mqttClient.publish(fullTopic, message, { qos: 1, retain: false, ...mqttOptions });
-    console.log('📤 MQTT gửi:', fullTopic, payload);
-    return true;
+    const retain = publishOptions.retain === true || topic === 'full_state' || topic === 'full_state_force';
+    try { mqttClient.publish(fullTopic, JSON.stringify(message), { qos: 1, retain }); return true; }
+    catch(e) { console.error('MQTT publish error:', e); return false; }
 }
 
-function flushMqttQueue() {
-    if (!mqttClient || !mqttClient.connected || !window._mqttQueue?.length) return;
-    const queue = window._mqttQueue.splice(0);
-    queue.forEach(item => publishMqtt(item.topic, item.payload, item.mqttOptions || {}));
-    console.log(`📤 MQTT: đã gửi ${queue.length} message đang chờ`);
-}
-
-// ============================================================
-//  FIX: handleMqttMessage - XỬ LÝ TẤT CẢ TIN NHẮN
-// ============================================================
 function handleMqttMessage(topic, payload) {
     const config = getMqttConfig();
     const baseTopic = config.topicBase;
-    if (payload.sender === config.clientId) return;
+    if (!payload || payload.sender === SYNC_CLIENT_ID) return;
     const action = topic.replace(`${baseTopic}/`, '');
-
-    console.log('📥 Xử lý MQTT:', { action, payload });
-
-    // === DEPOSIT REQUEST - KHÔNG CHECK TIMESTAMP ===
-    if (action.startsWith('deposit_request/')) {
-        handleSyncMessage({ ...payload, action });
-        return;
-    }
-
-    // === DEPOSIT APPROVED - KHÔNG CHECK TIMESTAMP ===
-    if (action === 'deposit_approved' || action === 'deposit_updated') {
-        handleSyncMessage({ ...payload, action });
-        return;
-    }
-
-    // === FULL STATE FORCE - KHÔNG CHECK TIMESTAMP ===
-    if (action === 'full_state_force' || action === 'full_state') {
-        handleSyncMessage({ ...payload, action });
-        return;
-    }
-
-    // === Các action khác check timestamp ===
-    if (payload.timestamp && Date.now() - payload.timestamp > 30000) return;
+    const age = payload.timestamp ? Date.now() - Number(payload.timestamp) : 0;
+    // Retained admin snapshot có thể được gửi khi thiết bị mở muộn.
+    const maxAge = (action === 'full_state' || action === 'full_state_force') ? (24 * 60 * 60 * 1000) : 30000;
+    if (age > maxAge) return;
     handleSyncMessage({ ...payload, action });
+}
+
+function publishSyncRequest() {
+    const payload = {
+        type: 'sync_request', action: 'sync_request',
+        requester: SYNC_CLIENT_ID, timestamp: Date.now(),
+        messageId: makeMessageId('request')
+    };
+    publishMqtt('sync_request', payload);
+    broadcastSync(payload);
 }
 
 // ============================================================
@@ -695,17 +731,27 @@ function updateSyncStatus(text, connected) {
 }
 
 // ============================================================
-//  STATE TRACKING
+//  STATE TRACKING - AUTHORITATIVE ADMIN SYNC
 // ============================================================
+const SYNC_PROTOCOL_VERSION = 4;
+const SYNC_MAX_AGE = 5 * 60 * 1000;
+const SYNC_CLIENT_ID = (window.__FF_SYNC_CLIENT_ID ||= 'ff_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8));
 let lastSyncTimestamp = 0;
-let isProcessingSync = false;
+let lastAppliedRevision = 0;
 let lastStateHash = '';
+let isProcessingSync = false;
 let syncQueue = [];
+let processedSyncMessages = new Set();
+let adminRevision = Number(localStorage.getItem('ff_admin_revision') || 0);
 
-function getCurrentStateHash() {
+function makeMessageId(prefix = 'sync') {
+    return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+}
+
+function stableStateHash() {
     try {
         const state = {
-            files: FILE_DATA,
+            files: FILE_DATA || [],
             users: Auth.getUsers(),
             giftcodes: Auth.getGiftcodes(),
             events: Auth.getEvents(),
@@ -714,864 +760,538 @@ function getCurrentStateHash() {
             supportLinks: getSupportLinks(),
             maxDeposit: APP.maxDeposit || 1000000,
             maintenance: getMaintenance(),
-            cart: getCart(),
-            depositRequests: Auth.getAllDepositRequests()
+            depositRequests: Auth.getAllDepositRequests(),
+            processedDeposits: getProcessedDeposits()
         };
         return JSON.stringify(state);
-    } catch(e) {
-        return Date.now().toString();
+    } catch (e) {
+        return String(Date.now());
     }
+}
+
+function getCurrentStateHash() { return stableStateHash(); }
+
+function markProcessedMessage(id) {
+    if (!id) return false;
+    if (processedSyncMessages.has(id)) return true;
+    processedSyncMessages.add(id);
+    if (processedSyncMessages.size > 1500) {
+        const first = processedSyncMessages.values().next().value;
+        processedSyncMessages.delete(first);
+    }
+    return false;
+}
+
+function isFreshSyncMessage(data) {
+    if (!data) return false;
+    if (data.protocol && data.protocol > SYNC_PROTOCOL_VERSION) return false;
+    const action = String(data.action || data.type || '').toLowerCase();
+    const maxAge = (action === 'full_state' || action === 'full_state_force') && data.authority === 'admin'
+        ? 24 * 60 * 60 * 1000 : SYNC_MAX_AGE;
+    if (data.timestamp && Date.now() - Number(data.timestamp) > maxAge) return false;
+    return true;
+}
+
+function isAdminAuthority(data) {
+    return !!data && data.authority === 'admin';
+}
+
+function buildFullState() {
+    return {
+        files: JSON.parse(JSON.stringify(FILE_DATA || [])),
+        users: JSON.parse(JSON.stringify(Auth.getUsers())),
+        giftcodes: JSON.parse(JSON.stringify(Auth.getGiftcodes())),
+        events: JSON.parse(JSON.stringify(Auth.getEvents())),
+        spinWeights: JSON.parse(JSON.stringify(Auth.getSpinWeights())),
+        bankConfig: JSON.parse(JSON.stringify(getBankConfig())),
+        supportLinks: JSON.parse(JSON.stringify(getSupportLinks())),
+        maxDeposit: APP.maxDeposit || 1000000,
+        maintenance: getMaintenance(),
+        depositRequests: JSON.parse(JSON.stringify(Auth.getAllDepositRequests())),
+        processedDeposits: JSON.parse(JSON.stringify(getProcessedDeposits()))
+    };
+}
+
+function nextAdminRevision() {
+    adminRevision = Math.max(adminRevision + 1, Date.now());
+    localStorage.setItem('ff_admin_revision', String(adminRevision));
+    return adminRevision;
+}
+
+function refreshCurrentSessionFromUsers() {
+    try {
+        if (!APP.isLoggedIn) return;
+        const current = Auth.getCurrentUser();
+        if (!current || !current.id) return;
+        const updated = Auth.getUserById(current.id);
+        if (!updated) {
+            Auth.logout();
+            APP.isLoggedIn = false; APP.currentUser = null; APP.isAdmin = false;
+            if (typeof handleLogout === 'function') handleLogout();
+            else if (typeof location !== 'undefined') setTimeout(() => location.reload(), 300);
+            return;
+        }
+        if (updated.locked) {
+            Auth.logout();
+            APP.isLoggedIn = false; APP.currentUser = null; APP.isAdmin = false;
+            if (typeof showToast === 'function') showToast('🔒 Tài khoản đã bị khóa!', 'fas fa-lock', 'error');
+            if (typeof handleLogout === 'function') handleLogout();
+            return;
+        }
+        const wasAdmin = !!APP.isAdmin;
+        APP.isLoggedIn = true;
+        APP.currentUser = { ...updated };
+        delete APP.currentUser.password;
+        APP.isAdmin = updated.role === 'admin';
+        APP.balance = updated.balance || 0;
+        APP.history = updated.history || [];
+        APP.totalDeposit = updated.totalDeposit || 0;
+        APP.vipLevel = updated.vipLevel || 0;
+        APP.vipPoints = updated.vipPoints || 0;
+        APP.spinCount = updated.spinCount || 0;
+        APP.winCount = updated.winCount || 0;
+        APP.spinHistory = updated.spinHistory || [];
+        APP.purchasedFiles = updated.purchasedFiles || [];
+        Auth.saveCurrentUser(APP.currentUser);
+        if (typeof DOM !== 'undefined') {
+            if (DOM.balanceBadge) DOM.balanceBadge.style.display = 'flex';
+            if (DOM.authSection) DOM.authSection.style.display = 'none';
+            if (DOM.userProfileBadge) DOM.userProfileBadge.style.display = 'flex';
+            if (DOM.userDisplayName) DOM.userDisplayName.textContent = updated.username || '';
+            if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
+            if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
+            if (DOM.profileUsername) DOM.profileUsername.textContent = updated.username || '';
+            if (DOM.profileEmail) DOM.profileEmail.textContent = updated.email || 'Chưa cập nhật';
+            if (DOM.profileRole) { DOM.profileRole.textContent = APP.isAdmin ? 'Quản trị viên' : 'Người dùng'; DOM.profileRole.className = APP.isAdmin ? 'role-admin' : 'role-user'; }
+            if (DOM.adminBadge) DOM.adminBadge.style.display = APP.isAdmin ? 'inline-block' : 'none';
+            if (DOM.adminNavLink) DOM.adminNavLink.style.display = APP.isAdmin ? 'block' : 'none';
+            if (DOM.adminDropdownLink) DOM.adminDropdownLink.style.display = APP.isAdmin ? 'flex' : 'none';
+            if (DOM.userAvatar && updated.avatar) DOM.userAvatar.src = updated.avatar;
+            if (DOM.profileAvatar && updated.avatar) DOM.profileAvatar.src = updated.avatar;
+            if (DOM.vipAvatar && updated.avatar) DOM.vipAvatar.src = updated.avatar;
+        }
+        if (typeof renderHistory === 'function') renderHistory();
+        if (typeof updateVIPUI === 'function') updateVIPUI(updated);
+        if (typeof updateDepositUsername === 'function') updateDepositUsername();
+        if (wasAdmin !== APP.isAdmin && typeof showToast === 'function') {
+            showToast(APP.isAdmin ? '👑 Quyền quản trị đã được đồng bộ!' : '⚠️ Quyền quản trị đã bị thu hồi!', APP.isAdmin ? 'fas fa-crown' : 'fas fa-user', APP.isAdmin ? 'success' : 'warning');
+        }
+        if (APP.isAdmin) {
+            if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
+            if (typeof renderAdminUsers === 'function') renderAdminUsers();
+        }
+    } catch (e) { console.error('refreshCurrentSessionFromUsers error:', e); }
+}
+
+function updateSyncSessionUI() {
+    try { refreshCurrentSessionFromUsers(); } catch (e) { console.warn('Session sync UI error', e); }
+}
+
+function mergeSyncedUsers(remoteUsers) {
+    if (!Array.isArray(remoteUsers)) return false;
+    const localUsers = Auth.getUsers();
+    const localById = new Map(localUsers.map(u => [String(u.id), u]));
+    const merged = remoteUsers.map(remote => {
+        const local = localById.get(String(remote.id));
+        if (!local) return remote;
+        const mergedUser = { ...local, ...remote };
+        // Full-state payloads may omit credentials in future versions.
+        if (!remote.password && local.password) mergedUser.password = local.password;
+        if (!remote.passwordHash && local.passwordHash) mergedUser.passwordHash = local.passwordHash;
+        return mergedUser;
+    });
+    const before = JSON.stringify(localUsers);
+    const after = JSON.stringify(merged);
+    if (before !== after) localStorage.setItem(STORAGE_KEY_USERS, after);
+    return before !== after;
+}
+
+function updateLocalUserFromRemote(remoteUser, options = {}) {
+    if (!remoteUser || !remoteUser.id) return false;
+    const users = Auth.getUsers();
+    const idx = users.findIndex(u => String(u.id) === String(remoteUser.id));
+    if (idx < 0) {
+        users.push(remoteUser);
+    } else {
+        const local = users[idx];
+        users[idx] = { ...local, ...remoteUser,
+            password: remoteUser.password || local.password,
+            passwordHash: remoteUser.passwordHash || local.passwordHash
+        };
+    }
+    localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
+    if (options.updateSession !== false) updateSyncSessionUI();
+    return true;
 }
 
 function processSyncQueue() {
-    if (syncQueue.length === 0 || isProcessingSync) return;
-    const nextData = syncQueue.shift();
-    isProcessingSync = true;
-    try {
-        handleSyncMessage(nextData);
-    } catch(e) {
-        console.error('Queue sync error:', e);
-    } finally {
-        isProcessingSync = false;
-        if (syncQueue.length > 0) {
-            setTimeout(processSyncQueue, 100);
-        }
-    }
+    if (isProcessingSync || syncQueue.length === 0) return;
+    const next = syncQueue.shift();
+    handleSyncMessage(next);
 }
 
-// ============================================================
-//  XỬ LÝ SYNC MESSAGE - HOÀN CHỈNH
-// ============================================================
-function handleSyncMessage(data) {
-    if (isProcessingSync) {
-        syncQueue.push(data);
-        return;
-    }
-    if (data.timestamp && data.timestamp <= lastSyncTimestamp) return;
-    
-    const action = data.action || data.type || 'unknown';
-    console.log('🔄 Sync:', action, data);
+function enqueueSync(data) {
+    if (!data) return;
+    if (syncQueue.length > 100) syncQueue.shift();
+    syncQueue.push(data);
+    setTimeout(processSyncQueue, 0);
+}
+
+function acceptAdminFullState(data) {
+    if (!isAdminAuthority(data) || !data.data) return false;
+    const revision = Number(data.revision || data.timestamp || 0);
+    if (revision && revision < lastAppliedRevision) return false;
+    if (revision && revision === lastAppliedRevision && data.messageId) return false;
+    const incomingHash = JSON.stringify(data.data);
+    if (incomingHash === lastStateHash && revision <= lastAppliedRevision) return false;
+
+    lastAppliedRevision = Math.max(lastAppliedRevision, revision);
+    lastSyncTimestamp = Number(data.timestamp || Date.now());
+    lastStateHash = incomingHash;
 
     _isSyncProcessing = true;
-
     try {
-        // === FORCE SYNC ===
-        if (data.force === true || action === 'full_state_force') {
-            if (data.senderIsAdmin !== true) {
-                console.warn('🔒 Bỏ qua force full-state không đến từ admin');
-                _isSyncProcessing = false;
-                processSyncQueue();
-                return;
-            }
-            if (data.data) {
-                try {
-                    const currentState = getCurrentStateHash();
-                    const newState = JSON.stringify(data.data);
-                    if (currentState !== newState) {
-                        lastSyncTimestamp = data.timestamp || Date.now();
-                        lastStateHash = newState;
-                        applyFullState(data.data, true);
-                        updateRevenueChart();
-                        if (!data.silent) {
-                            showToast('🔄 Dữ liệu đã được đồng bộ!', 'fas fa-sync', 'success');
-                        }
-                    }
-                } catch(e) {
-                    console.error('Sync error:', e);
-                } finally {
-                    _isSyncProcessing = false;
-                    processSyncQueue();
-                }
-                return;
-            }
-        }
-
-        // === DEPOSIT REQUEST - USER -> ADMIN ===
-        if (action === 'deposit' || action.startsWith('deposit_request/')) {
-            console.log('📥 Nhận deposit request:', data);
-            try {
-                if (data.status === 'pending' && data.userId && data.requestId) {
-                    if (APP.isAdmin) {
-                        const users = Auth.getUsers();
-                        let user = users.find(u => u.id === data.userId);
-                        if (user) {
-                            user.depositRequests = Array.isArray(user.depositRequests) ? user.depositRequests : [];
-                            const exists = user.depositRequests.find(r => r.id === data.requestId);
-                            if (!exists) {
-                                user.depositRequests.push({
-                                    id: data.requestId,
-                                    userId: data.userId,
-                                    username: data.username || user.username,
-                                    amount: Number(data.amount || 0),
-                                    method: data.method || 'Unknown',
-                                    status: 'pending',
-                                    createdAt: data.createdAt || new Date().toISOString()
-                                });
-                                Auth.saveUsers(users);
-                                showToast(`📢 Yêu cầu nạp ${Number(data.amount || 0).toLocaleString()}đ từ ${user.username}!`, 'fas fa-bell', 'warning');
-                                triggerConfetti();
-                            }
-                            renderDepositRequests();
-                            renderAdminDashboard();
-                            renderAdminUsers();
-                            updateRealStats();
-                            const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
-                            if (DOM.pendingBadge) {
-                                DOM.pendingBadge.textContent = pendingCount;
-                                DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`;
-                            }
-                            forceSyncToAllUsers(true);
-                        } else {
-                            console.warn('⚠️ Admin chưa có user nhận request:', data.userId);
-                        }
-                    } else {
-                        // User gửi request, lưu vào local
-                        const users = Auth.getUsers();
-                        const user = users.find(u => u.id === data.userId);
-                        if (user && APP.isLoggedIn && APP.currentUser.id === data.userId) {
-                            user.depositRequests = Array.isArray(user.depositRequests) ? user.depositRequests : [];
-                            const exists = user.depositRequests.find(r => r.id === data.requestId);
-                            if (!exists) {
-                                user.depositRequests.push({
-                                    id: data.requestId,
-                                    userId: data.userId,
-                                    username: data.username || user.username,
-                                    amount: Number(data.amount || 0),
-                                    method: data.method || 'Unknown',
-                                    status: 'pending',
-                                    createdAt: data.createdAt || new Date().toISOString()
-                                });
-                                Auth.saveUsers(users);
-                            }
-                            renderHistory();
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error('Deposit request sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // === DEPOSIT APPROVAL - ADMIN -> USER ===
-        if (action === 'deposit_approved' || action === 'deposit_updated') {
-            console.log('📥 Nhận deposit approved:', data);
-            try {
-                if (data.status === 'approved' || data.action === 'approved') {
-                    // KIỂM TRA TRÙNG LẶP
-                    if (isDepositProcessed(data.requestId)) {
-                        console.log('⚠️ Deposit đã được xử lý trước đó:', data.requestId);
-                        _isSyncProcessing = false;
-                        processSyncQueue();
-                        return;
-                    }
-
-                    const users = Auth.getUsers();
-                    const user = users.find(u => u.id === data.userId);
-                    if (user) {
-                        const amount = Number(data.amount || 0);
-
-                        // CẬP NHẬT TRỰC TIẾP VÀO USER
-                        user.balance = data.newBalance !== undefined ? data.newBalance : (user.balance || 0) + amount;
-                        user.totalDeposit = data.newTotalDeposit !== undefined ? data.newTotalDeposit : (user.totalDeposit || 0) + amount;
-                        if (data.newVipLevel !== undefined) user.vipLevel = data.newVipLevel;
-                        if (data.newVipPoints !== undefined) user.vipPoints = data.newVipPoints;
-
-                        // Cập nhật lịch sử nếu chưa có
-                        const hasHistory = (user.history || []).some(h => h.desc.includes('đồng bộ từ admin') && h.amount === `+${amount.toLocaleString()}đ`);
-                        if (!hasHistory) {
-                            user.history = user.history || [];
-                            user.history.unshift({
-                                id: '#DEP-' + Date.now().toString(36).toUpperCase(),
-                                desc: `Nạp tiền (đồng bộ từ admin)`,
-                                amount: `+${amount.toLocaleString()}đ`,
-                                status: 'Thành công',
-                                time: new Date().toLocaleString('vi-VN')
-                            });
-                        }
-
-                        // Cập nhật trạng thái request
-                        if (user.depositRequests) {
-                            const req = user.depositRequests.find(r => r.id === data.requestId);
-                            if (req) req.status = 'approved';
-                        }
-
-                        Auth.saveUsers(users);
-                        addProcessedDeposit(data.requestId);
-
-                        // === CẬP NHẬT UI CHO USER HIỆN TẠI ===
-                        if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
-                            APP.balance = user.balance;
-                            APP.totalDeposit = user.totalDeposit;
-                            APP.vipLevel = user.vipLevel;
-                            APP.vipPoints = user.vipPoints;
-                            if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
-                            if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
-                            renderHistory();
-                            updateVIPUI(user);
-                            if (!data.sender || data.sender !== mqttClient?.options?.clientId) {
-                                showToast(`💰 Đã nhận ${amount.toLocaleString()}đ từ admin!`, 'fas fa-wallet', 'success');
-                                triggerConfetti();
-                            }
-                            updateRevenueChart();
-                            updateRealStats();
-                            checkAchievements(user.id);
-                        }
-
-                        // === CẬP NHẬT UI CHO ADMIN ===
-                        if (APP.isAdmin) {
-                            renderDepositRequests();
-                            renderAdminDashboard();
-                            renderAdminUsers();
-                            const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
-                            if (DOM.pendingBadge) {
-                                DOM.pendingBadge.textContent = pendingCount;
-                                DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`;
-                            }
-                            if (!data.sender || data.sender !== mqttClient?.options?.clientId) {
-                                showToast(`✅ Đã duyệt ${amount.toLocaleString()}đ cho ${user.username}!`, 'fas fa-check-circle', 'success');
-                            }
-                        }
-
-                        lastSyncTimestamp = data.timestamp || Date.now();
-                        // Force sync để đảm bảo tất cả user nhận
-                        setTimeout(() => {
-                            forceSyncToAllUsers(true);
-                            publishFullState({ force: true, silent: true });
-                        }, 100);
-                    }
-                }
-
-                if (data.status === 'rejected' || data.action === 'rejected') {
-                    const users = Auth.getUsers();
-                    const user = users.find(u => u.id === data.userId);
-                    if (user) {
-                        const req = (user.depositRequests || []).find(r => r.id === data.requestId);
-                        if (req) {
-                            req.status = 'rejected';
-                            req.note = data.reason || data.note || 'Bị từ chối';
-                            req.updatedAt = new Date().toISOString();
-                            Auth.saveUsers(users);
-                            if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
-                                showToast(`❌ Yêu cầu nạp ${Number(data.amount || 0).toLocaleString()}đ đã bị từ chối.`, 'fas fa-times-circle', 'error');
-                            }
-                            if (APP.isAdmin) renderDepositRequests();
-                        }
-                    }
-                }
-
-                if (data.status === 'pending' || data.action === 'pending') {
-                    if (APP.isAdmin) {
-                        renderDepositRequests();
-                        renderAdminDashboard();
-                        const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
-                        if (DOM.pendingBadge) {
-                            DOM.pendingBadge.textContent = pendingCount;
-                            DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`;
-                        }
-                        showToast(`📢 Yêu cầu nạp ${(data.amount || 0).toLocaleString()}đ từ ${data.username || 'User'}!`, 'fas fa-bell', 'warning');
-                    }
-                }
-            } catch(e) {
-                console.error('Deposit sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // === USER SYNC ===
-        if (action.includes('user')) {
-            try {
-                if (APP.isAdmin && data.user) {
-                    const users = Auth.getUsers();
-                    const incoming = { ...data.user };
-                    const idx = users.findIndex(u => u.id === incoming.id);
-                    if (data.action === 'created' && idx === -1) {
-                        users.push(incoming);
-                        Auth.saveUsers(users);
-                    } else if ((data.action === 'updated' || data.action === 'unlocked' || data.action === 'locked') && idx !== -1) {
-                        users[idx] = { ...users[idx], ...incoming };
-                        Auth.saveUsers(users);
-                    }
-                    renderAdminUsers();
-                    renderAdminDashboard();
-                }
-                if (APP.isLoggedIn && APP.currentUser.id === data.userId) {
-                    if (data.action === 'locked') { 
-                        Auth.logout(); 
-                        showToast('🔒 Tài khoản bị khóa!', 'fas fa-lock', 'error'); 
-                        setTimeout(() => location.reload(), 2000); 
-                    }
-                    if (data.action === 'password_changed') { 
-                        showToast('🔑 Mật khẩu đã thay đổi! Đăng nhập lại.', 'fas fa-key', 'warning'); 
-                        setTimeout(() => { Auth.logout(); location.reload(); }, 3000); 
-                    }
-                    if (data.action === 'deleted') { 
-                        Auth.logout(); 
-                        showToast('❌ Tài khoản đã bị xóa!', 'fas fa-user-slash', 'error'); 
-                        setTimeout(() => location.reload(), 2000); 
-                    }
-                    if (data.action === 'updated' || data.action === 'unlocked') {
-                        const updatedUser = Auth.getUserById(data.userId);
-                        if (updatedUser) { 
-                            APP.balance = updatedUser.balance || 0; 
-                            APP.vipLevel = updatedUser.vipLevel || 0; 
-                            APP.vipPoints = updatedUser.vipPoints || 0; 
-                            if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString(); 
-                            updateVIPUI(updatedUser); 
-                        }
-                    }
-                }
-                lastSyncTimestamp = data.timestamp || Date.now();
-                forceSyncToAllUsers(true);
-            } catch(e) {
-                console.error('User sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // === FILES SYNC ===
-        if (action.includes('files')) {
-            try {
-                let changed = false;
-                if (data.action === 'created' && data.file) {
-                    FILE_DATA = getGlobalFiles();
-                    if (!FILE_DATA.some(f => f.id === data.file.id)) { 
-                        FILE_DATA.push(data.file); 
-                        saveGlobalFiles(FILE_DATA);
-                        changed = true;
-                        showToast(`📁 Đã thêm file: ${data.file.name}`, 'fas fa-file', 'success');
-                    }
-                }
-                if (data.action === 'updated' && data.file) {
-                    FILE_DATA = getGlobalFiles();
-                    const idx = FILE_DATA.findIndex(f => f.id === data.file.id);
-                    if (idx !== -1) { 
-                        FILE_DATA[idx] = { ...FILE_DATA[idx], ...data.file }; 
-                        saveGlobalFiles(FILE_DATA);
-                        changed = true;
-                        showToast(`📁 Đã cập nhật: ${data.file.name}`, 'fas fa-file', 'success');
-                    }
-                }
-                if (data.action === 'deleted' && data.fileId) {
-                    FILE_DATA = getGlobalFiles();
-                    const deleted = FILE_DATA.find(f => f.id === data.fileId);
-                    FILE_DATA = FILE_DATA.filter(f => f.id !== data.fileId);
-                    saveGlobalFiles(FILE_DATA);
-                    changed = true;
-                    if (deleted) showToast(`📁 Đã xóa: ${deleted.name}`, 'fas fa-trash', 'warning');
-                }
-                if (data.action === 'update' && data.files) { 
-                    FILE_DATA = data.files; 
-                    saveGlobalFiles(FILE_DATA);
-                    changed = true;
-                }
-                if (changed) {
-                    APP.files = [...FILE_DATA]; 
-                    APP.filteredFiles = [...FILE_DATA];
-                    renderFiles(); 
-                    renderFileGrid();
-                    if (APP.isAdmin) renderAdminFiles();
-                    updateRealStats();
-                    forceSyncToAllUsers(true);
-                }
-                lastSyncTimestamp = data.timestamp || Date.now();
-            } catch(e) {
-                console.error('Files sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // === GIFTCODE SYNC ===
-        if (action.includes('giftcode')) {
-            try {
-                if (data.action === 'created' && data.code) {
-                    const codes = Auth.getGiftcodes();
-                    if (!codes.some(c => c.code === data.code.code)) { 
-                        codes.push(data.code); 
-                        Auth.saveGiftcodes(codes);
-                        showToast(`🎫 Giftcode ${data.code.code} đã được tạo!`, 'fas fa-ticket', 'success');
-                    }
-                }
-                if (data.action === 'deleted' && data.code) {
-                    const codes = Auth.getGiftcodes();
-                    Auth.saveGiftcodes(codes.filter(c => c.code !== data.code));
-                    showToast(`🎫 Giftcode ${data.code} đã được xóa!`, 'fas fa-ticket', 'warning');
-                }
-                if (APP.isAdmin) renderAdminGiftcodes();
-                forceSyncToAllUsers(true);
-                lastSyncTimestamp = data.timestamp || Date.now();
-            } catch(e) {
-                console.error('Giftcode sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // === EVENTS SYNC ===
-        if (action.includes('event')) {
-            try {
-                if (data.action === 'created' && data.event) {
-                    const events = Auth.getEvents();
-                    if (!events.some(e => e.id === data.event.id)) { 
-                        events.push(data.event); 
-                        Auth.saveEvents(events);
-                        showToast(`📅 Sự kiện "${data.event.name}" đã được tạo!`, 'fas fa-calendar-day', 'success');
-                    }
-                }
-                if (data.action === 'updated' && data.event) {
-                    const events = Auth.getEvents();
-                    const idx = events.findIndex(e => e.id === data.event.id);
-                    if (idx !== -1) { 
-                        events[idx] = { ...events[idx], ...data.event }; 
-                        Auth.saveEvents(events);
-                        showToast(`📅 Sự kiện "${data.event.name}" đã được cập nhật!`, 'fas fa-calendar-day', 'success');
-                    }
-                }
-                if (data.action === 'deleted' && data.eventId) {
-                    const events = Auth.getEvents();
-                    const deleted = events.find(e => e.id === data.eventId);
-                    Auth.saveEvents(events.filter(e => e.id !== data.eventId));
-                    if (deleted) showToast(`📅 Đã xóa sự kiện: ${deleted.name}`, 'fas fa-calendar-day', 'warning');
-                }
-                renderEvents();
-                if (APP.isAdmin) renderAdminEvents();
-                forceSyncToAllUsers(true);
-                lastSyncTimestamp = data.timestamp || Date.now();
-            } catch(e) {
-                console.error('Events sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // === SPIN WEIGHTS SYNC ===
-        if (action.includes('spin')) {
-            try {
-                if (data.weights) { 
-                    Auth.saveSpinWeights(data.weights); 
-                    if (APP.isAdmin) renderAdminSpinWeights(); 
-                    showToast('🎡 Tỉ lệ vòng quay đã được cập nhật!', 'fas fa-dharmachakra', 'success');
-                    forceSyncToAllUsers(true);
-                }
-                lastSyncTimestamp = data.timestamp || Date.now();
-            } catch(e) {
-                console.error('Spin weights sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // === SETTINGS SYNC ===
-        if (action.includes('settings')) {
-            try {
-                let changed = false;
-                if (data.maxDeposit && data.maxDeposit !== APP.maxDeposit) { 
-                    APP.maxDeposit = data.maxDeposit; 
-                    changed = true;
-                }
-                if (data.bankConfig) { 
-                    APP.bankConfig = data.bankConfig; 
-                    saveBankConfig(data.bankConfig);
-                    if (APP.isAdmin) renderAdminQRConfig(); 
-                    changed = true;
-                }
-                if (data.supportLinks) { 
-                    updateSupportUI(data.supportLinks); 
-                    localStorage.setItem(STORAGE_KEY_SUPPORT, JSON.stringify(data.supportLinks));
-                    changed = true;
-                }
-                if (changed) {
-                    showToast('⚙️ Cài đặt đã được cập nhật!', 'fas fa-gear', 'success');
-                    forceSyncToAllUsers(true);
-                }
-                lastSyncTimestamp = data.timestamp || Date.now();
-            } catch(e) {
-                console.error('Settings sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // === CART SYNC ===
-        if (action.includes('cart') && data.cart) {
-            try {
-                localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(data.cart));
-                updateCartUI(); renderCart();
-                lastSyncTimestamp = data.timestamp || Date.now();
-                forceSyncToAllUsers(true);
-            } catch(e) {
-                console.error('Cart sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // === REVIEW SYNC ===
-        if (action.includes('review') && data.review) {
-            try {
-                const reviews = Auth.getReviews();
-                if (!reviews.some(r => r.id === data.review.id)) { 
-                    reviews.unshift(data.review); 
-                    Auth.saveReviews(reviews); 
-                    renderReviews(); 
-                    showToast('⭐ Đã có đánh giá mới!', 'fas fa-star', 'success');
-                    forceSyncToAllUsers(true);
-                }
-                lastSyncTimestamp = data.timestamp || Date.now();
-            } catch(e) {
-                console.error('Review sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // === SYSTEM EVENT ===
-        if (action.includes('system') && data.event === 'maintenance') {
-            try {
-                if (data.status !== undefined) setMaintenance(data.status, true);
-                if (data.message) showToast(`📢 ${data.message}`, 'fas fa-bullhorn', 'warning');
-                forceSyncToAllUsers(true);
-                lastSyncTimestamp = data.timestamp || Date.now();
-            } catch(e) {
-                console.error('System event sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // === FULL STATE ===
-        if (action.includes('full') && data.data) {
-            if (data.senderIsAdmin !== true) {
-                console.warn('🔒 Bỏ qua full-state không đến từ admin');
-                _isSyncProcessing = false;
-                processSyncQueue();
-                return;
-            }
-            try {
-                const currentState = getCurrentStateHash();
-                const newState = JSON.stringify(data.data);
-                if (currentState !== newState) {
-                    lastSyncTimestamp = data.timestamp || Date.now();
-                    lastStateHash = newState;
-                    applyFullState(data.data, true);
-                    updateRevenueChart();
-                    if (!data.silent) {
-                        showToast('🔄 Đã đồng bộ toàn bộ dữ liệu!', 'fas fa-sync', 'success');
-                    }
-                }
-            } catch(e) {
-                console.error('Full state sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // === SYNC REQUEST ===
-        if (action.includes('sync_request')) { 
-            setTimeout(() => {
-                publishFullState({ silent: true });
-                forceSyncToAllUsers(true);
-            }, 500); 
-            _isSyncProcessing = false;
-            processSyncQueue();
-            return;
-        }
-
-        // === ADMIN ACTION ===
-        if (action.includes('admin_action')) {
-            try {
-                if (data.action_type === 'reject_deposit') {
-                    if (APP.isAdmin) {
-                        renderDepositRequests();
-                        renderAdminDashboard();
-                        if (!data.sender || data.sender !== mqttClient?.options?.clientId) {
-                            showToast(`❌ Đã từ chối ${(data.amount || 0).toLocaleString()}đ của ${data.username || 'User'}!`, 'fas fa-times-circle', 'error');
-                        }
-                        forceSyncToAllUsers(true);
-                    }
-                }
-                lastSyncTimestamp = data.timestamp || Date.now();
-            } catch(e) {
-                console.error('Admin action sync error:', e);
-            } finally {
-                _isSyncProcessing = false;
-                processSyncQueue();
-            }
-            return;
-        }
-
-        // Fallback
-        if (APP.isAdmin) { renderAdminDashboard(); }
-        renderFiles(); renderFileGrid(); updateRealStats(); updateRevenueChart();
-        forceSyncToAllUsers(true);
-    } catch(e) {
-        console.error('Sync error:', e);
+        applyFullState(data.data, true);
+        updateSyncSessionUI();
+        updateRevenueChart();
+        return true;
+    } catch (e) {
+        console.error('Admin full-state apply error:', e);
+        return false;
     } finally {
         _isSyncProcessing = false;
     }
 }
 
-// ============================================================
-//  FORCE SYNC TO ALL USERS
-// ============================================================
-function forceSyncToAllUsers(silent = false) {
-    if (APP.isAdmin !== true) {
-        console.log('🔒 User client: bỏ qua full-state broadcast');
-        return;
-    }
+function handleSyncMessage(data) {
+    if (!data || typeof data !== 'object') return;
+    if (data.sender && data.sender === SYNC_CLIENT_ID) return;
+    if (!isFreshSyncMessage(data)) return;
+    if (markProcessedMessage(data.messageId)) return;
 
-    const currentHash = getCurrentStateHash();
-    if (currentHash === lastStateHash && !silent) {
-        console.log('🔄 Không có thay đổi, bỏ qua force sync');
-        return;
-    }
+    if (isProcessingSync) { enqueueSync(data); return; }
+    isProcessingSync = true;
+    _isSyncProcessing = true;
+    const action = String(data.action || data.type || '').toLowerCase();
 
-    const fullState = {
-        files: FILE_DATA,
-        users: Auth.getUsers(),
-        giftcodes: Auth.getGiftcodes(),
-        events: Auth.getEvents(),
-        spinWeights: Auth.getSpinWeights(),
-        bankConfig: getBankConfig(),
-        supportLinks: getSupportLinks(),
-        maxDeposit: APP.maxDeposit || 1000000,
-        maintenance: getMaintenance(),
-        cart: getCart(),
-        depositRequests: Auth.getAllDepositRequests(),
-        timestamp: Date.now()
-    };
+    try {
+        // ===== AUTHORITATIVE FULL STATE: CHỈ ADMIN ĐƯỢC PHÉP GỬI =====
+        if ((action === 'full_state' || action === 'full_state_force' || data.force === true) && data.data) {
+            if (isAdminAuthority(data)) {
+                acceptAdminFullState(data);
+            } else {
+                console.warn('⛔ Bỏ full-state không có quyền admin');
+            }
+            return;
+        }
 
-    lastStateHash = currentHash;
+        // ===== SYNC REQUEST: USER YÊU CẦU ADMIN GỬI SNAPSHOT =====
+        if (action === 'sync_request') {
+            if (APP.isAdmin) setTimeout(() => publishFullState({ force: true, silent: true }), 50);
+            return;
+        }
 
-    // Gửi MQTT
-    publishMqtt('full_state_force', {
-        data: fullState,
-        force: true,
-        silent: silent,
-        sender: 'admin_force',
-        timestamp: Date.now()
-    });
+        // ===== USER EVENTS: ADMIN TIẾP NHẬN VÀ PHÁT LẠI STATE CHUẨN =====
+        if (action.includes('user')) {
+            // update_all từ User được Admin dùng để đồng bộ hồ sơ/mật khẩu/purchase của CHÍNH user đó,
+            // nhưng tuyệt đối không cho User ghi đè balance, role, VIP, lock hoặc tổng nạp.
+            if (data.action === 'update_all' && APP.isAdmin && Array.isArray(data.users) && data.actorUserId) {
+                const remote = data.users.find(u => String(u.id) === String(data.actorUserId));
+                const local = Auth.getUserById(data.actorUserId);
+                if (remote && local) {
+                    const safe = { ...remote,
+                        id: local.id, role: local.role, balance: local.balance, totalDeposit: local.totalDeposit,
+                        vipLevel: local.vipLevel, vipPoints: local.vipPoints, locked: local.locked,
+                        depositRequests: remote.depositRequests || local.depositRequests,
+                        history: remote.history || local.history, purchasedFiles: remote.purchasedFiles || local.purchasedFiles,
+                        reviews: remote.reviews || local.reviews, spinHistory: remote.spinHistory || local.spinHistory,
+                        spinCount: remote.spinCount ?? local.spinCount, winCount: remote.winCount ?? local.winCount
+                    };
+                    updateLocalUserFromRemote(safe, { updateSession: false });
+                    renderAdminUsers(); renderAdminDashboard();
+                    setTimeout(() => publishFullState({ force: true, silent: true }), 50);
+                }
+                return;
+            }
+            if (data.action === 'created' && data.user) {
+                if (APP.isAdmin) {
+                    updateLocalUserFromRemote(data.user, { updateSession: false });
+                    renderAdminUsers(); renderAdminDashboard();
+                    setTimeout(() => publishFullState({ force: true, silent: true }), 50);
+                }
+                return;
+            }
+            if (data.action === 'updated' && data.user) {
+                // Chỉ Admin mới có quyền thay đổi role/balance/lock; User update chỉ dùng cho hồ sơ cơ bản.
+                if (APP.isAdmin) {
+                    const current = Auth.getUserById(data.user.id);
+                    const safe = { ...data.user };
+                    if (current) {
+                        safe.role = current.role;
+                        safe.balance = current.balance;
+                        safe.totalDeposit = current.totalDeposit;
+                        safe.vipLevel = current.vipLevel;
+                        safe.vipPoints = current.vipPoints;
+                        safe.locked = current.locked;
+                        safe.depositRequests = current.depositRequests;
+                    }
+                    updateLocalUserFromRemote(safe, { updateSession: false });
+                    renderAdminUsers(); renderAdminDashboard();
+                    setTimeout(() => publishFullState({ force: true, silent: true }), 50);
+                }
+                return;
+            }
+            if (['locked','unlocked','deleted','password_changed'].includes(data.action)) {
+                // Các trạng thái quyền/tài khoản chỉ chấp nhận khi message là của Admin.
+                if (isAdminAuthority(data) && data.userId) {
+                    const users = Auth.getUsers();
+                    if (data.action === 'deleted') {
+                        localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users.filter(u => String(u.id) !== String(data.userId))));
+                    } else {
+                        const u = users.find(x => String(x.id) === String(data.userId));
+                        if (u) {
+                            if (data.action === 'locked') u.locked = true;
+                            if (data.action === 'unlocked') u.locked = false;
+                            localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
+                        }
+                    }
+                    updateSyncSessionUI();
+                }
+                return;
+            }
+            return;
+        }
 
-    // Gửi Broadcast
-    broadcastSync({
-        type: 'full_state_force',
-        data: fullState,
-        force: true,
-        silent: silent
-    });
+        // ===== DEPOSIT REQUEST / APPROVAL =====
+        if (action.includes('deposit')) {
+            if (data.status === 'pending' && APP.isAdmin && data.userId && data.requestId) {
+                const users = Auth.getUsers();
+                const user = users.find(u => String(u.id) === String(data.userId));
+                if (user) {
+                    user.depositRequests = user.depositRequests || [];
+                    if (!user.depositRequests.some(r => r.id === data.requestId)) {
+                        user.depositRequests.push({
+                            id: data.requestId, userId: user.id, username: user.username,
+                            amount: Number(data.amount || 0), method: data.method || '', status: 'pending',
+                            createdAt: data.timestamp ? new Date(data.timestamp).toISOString() : new Date().toISOString()
+                        });
+                        localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
+                        renderDepositRequests(); renderAdminDashboard();
+                        setTimeout(() => publishFullState({ force: true, silent: true }), 50);
+                    }
+                }
+            }
+            if ((data.status === 'approved' || data.action === 'approved') && isAdminAuthority(data)) {
+                // Admin đã gửi trạng thái mới; không tự cộng tiền ở đây. Full-state là nguồn sự thật.
+                acceptAdminFullState(data);
+            }
+            return;
+        }
 
-    // Lưu vào localStorage
-    localStorage.setItem('ff_force_sync', JSON.stringify({
-        data: fullState,
-        timestamp: Date.now(),
-        silent: silent,
-        senderIsAdmin: true
-    }));
+        // ===== ADMIN ACTION: CHỈ ADMIN AUTHORITY =====
+        if (action === 'admin_action') {
+            if (!isAdminAuthority(data)) return;
+            // admin_action chỉ là tín hiệu; state chính thức nằm trong full_state.
+            if (APP.isAdmin) {
+                renderDepositRequests(); renderAdminDashboard(); renderAdminUsers(); updateRealStats();
+            }
+            return;
+        }
 
-    console.log('🔄 FORCE SYNC đã gửi đến tất cả user!');
-    if (!silent) {
-        showToast('📡 Đã đồng bộ dữ liệu đến tất cả thiết bị!', 'fas fa-satellite-dish', 'success');
+        // ===== FILES: CHỈ ADMIN ĐƯỢC PHÉP PHÁT STATE; USER CHỈ NHẬN =====
+        if (action.includes('files')) {
+            if (!isAdminAuthority(data)) return;
+            if (data.action === 'created' && data.file) {
+                const files = getGlobalFiles();
+                if (!files.some(f => String(f.id) === String(data.file.id))) files.push(data.file);
+                FILE_DATA = files; saveGlobalFiles(FILE_DATA);
+            } else if (data.action === 'updated' && data.file) {
+                const files = getGlobalFiles(); const i = files.findIndex(f => String(f.id) === String(data.file.id));
+                if (i >= 0) files[i] = { ...files[i], ...data.file };
+                FILE_DATA = files; saveGlobalFiles(FILE_DATA);
+            } else if (data.action === 'deleted' && data.fileId != null) {
+                FILE_DATA = getGlobalFiles().filter(f => String(f.id) !== String(data.fileId)); saveGlobalFiles(FILE_DATA);
+            } else if (data.files) {
+                FILE_DATA = Array.isArray(data.files) ? data.files : FILE_DATA; saveGlobalFiles(FILE_DATA);
+            }
+            APP.files = [...FILE_DATA]; APP.filteredFiles = [...FILE_DATA];
+            renderFiles(); renderFileGrid(); if (APP.isAdmin) renderAdminFiles(); updateRealStats();
+            return;
+        }
+
+        // ===== GIFTCODE / EVENT / SPIN / SETTINGS: ADMIN AUTHORITY =====
+        if (action.includes('giftcode') && isAdminAuthority(data)) {
+            if (data.codes) Auth.saveGiftcodes(data.codes);
+            else if (data.action === 'created' && data.code) { const c = Auth.getGiftcodes(); if (!c.some(x => x.code === data.code.code)) c.push(data.code); Auth.saveGiftcodes(c); }
+            else if (data.action === 'deleted') Auth.saveGiftcodes(Auth.getGiftcodes().filter(x => x.code !== data.code));
+            if (APP.isAdmin) renderAdminGiftcodes();
+            return;
+        }
+        if (action.includes('event') && isAdminAuthority(data)) {
+            if (data.events) Auth.saveEvents(data.events);
+            else if (data.action === 'created' && data.event) { const e = Auth.getEvents(); if (!e.some(x => x.id === data.event.id)) e.push(data.event); Auth.saveEvents(e); }
+            else if (data.action === 'updated' && data.event) { const e = Auth.getEvents(); const i=e.findIndex(x=>x.id===data.event.id); if(i>=0)e[i]={...e[i],...data.event}; Auth.saveEvents(e); }
+            else if (data.action === 'deleted') Auth.saveEvents(Auth.getEvents().filter(x=>x.id!==data.eventId));
+            renderEvents(); if (APP.isAdmin) renderAdminEvents();
+            return;
+        }
+        if (action.includes('spin') && isAdminAuthority(data) && data.weights) {
+            Auth.saveSpinWeights(data.weights); if (APP.isAdmin) renderAdminSpinWeights(); return;
+        }
+        if (action.includes('settings') && isAdminAuthority(data)) {
+            if (data.bankConfig) { APP.bankConfig = data.bankConfig; saveBankConfig(data.bankConfig); }
+            if (data.supportLinks) { localStorage.setItem(STORAGE_KEY_SUPPORT, JSON.stringify(data.supportLinks)); updateSupportUI(data.supportLinks); }
+            if (data.maxDeposit != null) APP.maxDeposit = Number(data.maxDeposit);
+            return;
+        }
+
+        // ===== REVIEW: USER ĐƯỢC PHÉP GỬI, ADMIN LƯU VÀ PHÁT LẠI =====
+        if (action.includes('review') && data.review) {
+            const reviews = Auth.getReviews();
+            if (!reviews.some(r => r.id === data.review.id)) {
+                reviews.unshift(data.review); Auth.saveReviews(reviews); renderReviews();
+                if (APP.isAdmin) setTimeout(() => publishFullState({ force: true, silent: true }), 50);
+            }
+            return;
+        }
+
+        // ===== PURCHASE: ADMIN NHẬN PURCHASE EVENT VÀ PHÁT STATE =====
+        if (action.includes('purchase') && data.userId && data.fileId) {
+            if (APP.isAdmin) {
+                const users = Auth.getUsers(); const u = users.find(x => String(x.id) === String(data.userId));
+                if (u) {
+                    u.purchasedFiles = u.purchasedFiles || [];
+                    if (!u.purchasedFiles.some(p => String(p.fileId) === String(data.fileId))) {
+                        u.purchasedFiles.push({ fileId: data.fileId, fileName: data.fileName || '', purchasedAt: data.timestamp ? new Date(data.timestamp).toISOString() : new Date().toISOString() });
+                        localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
+                        setTimeout(() => publishFullState({ force: true, silent: true }), 50);
+                    }
+                }
+            }
+            return;
+        }
+
+        // ===== BALANCE UPDATE: KHÔNG DÙNG ĐỂ CỘNG TIỀN; FULL STATE TỪ ADMIN MỚI QUYẾT ĐỊNH =====
+        if (action.includes('balance_update')) return;
+
+        // ===== CART: GIỮ ĐỒNG BỘ LOCAL, NHƯNG KHÔNG ĐƯỢC GHI ĐÈ STATE ADMIN =====
+        if (action.includes('cart') && data.cart) {
+            localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(data.cart)); updateCartUI(); renderCart(); return;
+        }
+    } catch (e) {
+        console.error('❌ Sync handler error:', e);
+    } finally {
+        _isSyncProcessing = false;
+        isProcessingSync = false;
+        setTimeout(processSyncQueue, 0);
     }
 }
 
 // ============================================================
-//  LẮNG NGHE FORCE SYNC TỪ LOCALSTORAGE
+//  FORCE SYNC - CHỈ ADMIN ĐƯỢC PHÁT STATE TOÀN CỤC
 // ============================================================
-setInterval(function() {
-    try {
-        const syncData = localStorage.getItem('ff_force_sync');
-        if (syncData) {
-            const parsed = JSON.parse(syncData);
-            if (parsed.timestamp && parsed.timestamp > (window._lastSyncProcessed || 0)) {
-                if (parsed.senderIsAdmin !== true && APP.isAdmin !== true) return;
-                if (parsed.timestamp < (window._lastSyncProcessed || 0)) return;
-                window._lastSyncProcessed = parsed.timestamp;
-                if (parsed.data) {
-                    const currentState = getCurrentStateHash();
-                    const newState = JSON.stringify(parsed.data);
-                    if (currentState !== newState) {
-                        applyFullState(parsed.data, true);
-                        updateRevenueChart();
-                        if (!parsed.silent) {
-                            showToast('🔄 Đã đồng bộ dữ liệu từ admin!', 'fas fa-sync', 'success');
-                        }
-                    }
-                }
-            }
-        }
-    } catch(e) {}
-}, 2000);
+function forceSyncToAllUsers(silent = false) {
+    if (!APP.isAdmin) return false;
+    return publishFullState({ force: true, silent });
+}
 
 // ============================================================
-//  PUBLISH FULL STATE
+//  PUBLISH FULL STATE - ADMIN AUTHORITATIVE
 // ============================================================
 function publishFullState(options = {}) {
-    if (APP.isAdmin !== true) {
-        console.log('🔒 User client: không được publish full_state');
-        return;
-    }
-    const currentHash = getCurrentStateHash();
-    if (currentHash === lastStateHash && !options.force) {
-        console.log('🔄 Không có thay đổi, bỏ qua publishFullState');
-        return;
-    }
-    lastStateHash = currentHash;
-
-    const state = {
-        files: FILE_DATA,
-        users: Auth.getUsers(),
-        giftcodes: Auth.getGiftcodes(),
-        events: Auth.getEvents(),
-        spinWeights: Auth.getSpinWeights(),
-        bankConfig: getBankConfig(),
-        supportLinks: getSupportLinks(),
-        maxDeposit: APP.maxDeposit || 1000000,
-        maintenance: getMaintenance(),
-        cart: getCart(),
-        depositRequests: Auth.getAllDepositRequests(),
+    if (!APP.isAdmin) return false;
+    const state = buildFullState();
+    const hash = JSON.stringify(state);
+    const revision = nextAdminRevision();
+    lastStateHash = hash;
+    lastAppliedRevision = Math.max(lastAppliedRevision, revision);
+    const payload = {
+        data: state,
+        force: !!options.force,
+        silent: !!options.silent,
+        authority: 'admin',
+        protocol: SYNC_PROTOCOL_VERSION,
+        revision,
+        messageId: makeMessageId('admin_state'),
+        timestamp: Date.now()
     };
-    publishMqtt('full_state', { data: state, silent: options.silent || false });
-    broadcastSync({ type: 'full_state', data: state, silent: options.silent || false });
+    publishMqtt('full_state', payload, { retain: true });
+    publishMqtt('full_state_force', payload, { retain: true });
+    broadcastSync({ type: 'full_state', ...payload });
+    try { localStorage.setItem('ff_force_sync', JSON.stringify(payload)); } catch(e) {}
+    if (!options.silent) showToast('📡 Đã đồng bộ dữ liệu đến tất cả thiết bị!', 'fas fa-satellite-dish', 'success');
+    return true;
 }
 
 // ============================================================
 //  APPLY FULL STATE
 // ============================================================
 function applyFullState(data, silent = false) {
-    if (!data) return;
-
-    console.log('🔄 Áp dụng full state:', data);
-
-    if (data.files) {
-        FILE_DATA = data.files;
-        saveGlobalFiles(FILE_DATA);
-        APP.files = [...FILE_DATA];
-        APP.filteredFiles = [...FILE_DATA];
-        renderFiles();
-        renderFileGrid();
-        if (APP.isAdmin) renderAdminFiles();
-        updateRealStats();
-    }
-
-    if (data.users) {
-        localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(data.users));
-
-        if (APP.isLoggedIn) {
-            const u = Auth.getUserById(APP.currentUser.id);
-            if (u) {
-                APP.balance = u.balance || 0;
-                APP.history = u.history || [];
-                APP.totalDeposit = u.totalDeposit || 0;
-                APP.vipLevel = u.vipLevel || 0;
-                APP.vipPoints = u.vipPoints || 0;
-                if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
-                if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
-                renderHistory();
-                updateVIPUI(u);
-                const current = Auth.getCurrentUser();
-                if (current) {
-                    current.balance = u.balance;
-                    current.history = u.history;
-                    current.totalDeposit = u.totalDeposit;
-                    current.vipLevel = u.vipLevel;
-                    current.vipPoints = u.vipPoints;
-                    Auth.saveCurrentUser(current);
-                }
+    if (!data || typeof data !== 'object') return false;
+    try {
+        if (Array.isArray(data.files)) {
+            FILE_DATA = data.files;
+            localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(FILE_DATA));
+            APP.files = [...FILE_DATA]; APP.filteredFiles = [...FILE_DATA];
+            renderFiles(); renderFileGrid(); if (APP.isAdmin) renderAdminFiles(); updateRealStats();
+        }
+        if (Array.isArray(data.users)) {
+            const oldCurrent = Auth.getCurrentUser();
+            mergeSyncedUsers(data.users);
+            const nextCurrent = oldCurrent ? Auth.getUserById(oldCurrent.id) : null;
+            if (oldCurrent && !nextCurrent) {
+                Auth.logout();
+                APP.isLoggedIn = false; APP.currentUser = null; APP.isAdmin = false;
+                if (typeof showToast === 'function') showToast('❌ Tài khoản đã bị xóa!', 'fas fa-user-slash', 'error');
+            } else if (nextCurrent) {
+                Auth.saveCurrentUser({ ...nextCurrent, password: undefined });
+                refreshCurrentSessionFromUsers();
             }
+            if (APP.isAdmin) { renderDepositRequests(); renderAdminDashboard(); renderAdminUsers(); }
         }
-
+        if (Array.isArray(data.giftcodes)) localStorage.setItem(STORAGE_KEY_GIFTCODES, JSON.stringify(data.giftcodes));
+        if (Array.isArray(data.events)) { localStorage.setItem(STORAGE_KEY_EVENTS, JSON.stringify(data.events)); renderEvents(); if (APP.isAdmin) renderAdminEvents(); }
+        if (data.spinWeights) { localStorage.setItem(STORAGE_KEY_SPIN_WEIGHTS, JSON.stringify(data.spinWeights)); if (APP.isAdmin) renderAdminSpinWeights(); }
+        if (data.bankConfig) { APP.bankConfig = data.bankConfig; localStorage.setItem(STORAGE_KEY_BANK, JSON.stringify(data.bankConfig)); if (APP.isAdmin) renderAdminQRConfig(); }
+        if (data.supportLinks) { localStorage.setItem(STORAGE_KEY_SUPPORT, JSON.stringify(data.supportLinks)); updateSupportUI(data.supportLinks); }
+        if (data.maxDeposit != null) APP.maxDeposit = Number(data.maxDeposit);
+        if (data.maintenance !== undefined) setMaintenance(data.maintenance, true);
+        if (Array.isArray(data.processedDeposits)) localStorage.setItem(STORAGE_KEY_PROCESSED_DEPOSITS, JSON.stringify(data.processedDeposits));
         if (APP.isAdmin) {
-            renderDepositRequests();
-            renderAdminDashboard();
-            renderAdminUsers();
+            renderDepositRequests(); renderAdminDashboard(); renderAdminUsers(); updateRealStats();
         }
+        return true;
+    } catch (e) {
+        console.error('❌ Apply full state error:', e);
+        return false;
     }
-
-    if (data.giftcodes) {
-        localStorage.setItem(STORAGE_KEY_GIFTCODES, JSON.stringify(data.giftcodes));
-        if (APP.isAdmin) renderAdminGiftcodes();
-    }
-
-    if (data.events) {
-        localStorage.setItem(STORAGE_KEY_EVENTS, JSON.stringify(data.events));
-        renderEvents();
-        if (APP.isAdmin) renderAdminEvents();
-    }
-
-    if (data.spinWeights) {
-        localStorage.setItem(STORAGE_KEY_SPIN_WEIGHTS, JSON.stringify(data.spinWeights));
-        if (APP.isAdmin) renderAdminSpinWeights();
-    }
-
-    if (data.bankConfig) {
-        APP.bankConfig = data.bankConfig;
-        saveBankConfig(data.bankConfig);
-        if (APP.isAdmin) renderAdminQRConfig();
-    }
-
-    if (data.supportLinks) {
-        updateSupportUI(data.supportLinks);
-        localStorage.setItem(STORAGE_KEY_SUPPORT, JSON.stringify(data.supportLinks));
-    }
-
-    if (data.maxDeposit) {
-        APP.maxDeposit = data.maxDeposit;
-    }
-
-    if (data.maintenance !== undefined) {
-        setMaintenance(data.maintenance, true);
-    }
-
-    if (data.cart) {
-        localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(data.cart));
-        updateCartUI();
-        renderCart();
-    }
-
-    if (data.depositRequests && APP.isAdmin) {
-        renderDepositRequests();
-        const pendingCount = data.depositRequests.filter(r => r.status === 'pending').length;
-        if (DOM.pendingBadge) {
-            DOM.pendingBadge.textContent = pendingCount;
-            DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`;
-        }
-    }
-
-    updateRevenueChart();
-    updateRealStats();
-    console.log('✅ Applied full state sync successfully!');
 }
 
+// Nhận retained force-state khi tab/device vừa mở; chỉ Admin authority mới được áp dụng.
+setInterval(() => {
+    try {
+        const raw = localStorage.getItem('ff_force_sync');
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (data && isAdminAuthority(data) && data.timestamp && Date.now() - data.timestamp <= 10 * 60 * 1000) {
+            if (Number(data.revision || 0) > lastAppliedRevision && data.data) {
+                acceptAdminFullState(data);
+            }
+        }
+    } catch(e) {}
+}, 1500);
+
 // ============================================================
-//  AUTH SYSTEM
+//  BROADCAST STORAGE TRIGGER
+// ============================================================
+window.addEventListener('storage', (e) => {
+    if (e.key === 'ff_force_sync' && e.newValue) {
+        try { handleSyncMessage(JSON.parse(e.newValue)); } catch(err) {}
+    }
+});
+
+// ============================================================
+//  AUTH SYSTEM - FIX CỘNG TIỀN CHÍNH XÁC
 // ============================================================
 const Auth = {
     getUsers() {
@@ -1580,9 +1300,9 @@ const Auth = {
     saveUsers(users) {
         localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
         try { localStorage.setItem('ff_sync_trigger', Date.now().toString()); } catch (e) {}
-        if (!_isSyncProcessing && APP.isAdmin === true) {
-            publishMqtt('user_sync', { action: 'update_all', users: users, source: 'admin' });
-            broadcastSync({ type: 'user_sync', action: 'update_all', users: users, source: 'admin' });
+        if (!_isSyncProcessing) {
+            publishMqtt('user_sync', { action: 'update_all', users: users });
+            broadcastSync({ type: 'user_sync', action: 'update_all', users: users });
             forceSyncToAllUsers(true);
         }
     },
@@ -1606,7 +1326,7 @@ const Auth = {
         }
         return level;
     },
-
+    
     login(username, password, remember = true) {
         const bruteCheck = checkBruteForce(username);
         if (bruteCheck.blocked) {
@@ -1656,12 +1376,12 @@ const Auth = {
         if (remember) localStorage.setItem(STORAGE_KEY_REMEMBER, 'true');
         return { success: true, message: 'Đăng nhập thành công!', user: sessionUser };
     },
-
+    
     logout() {
         this.saveCurrentUser(null);
         localStorage.removeItem(STORAGE_KEY_REMEMBER);
     },
-
+    
     register(username, email, password) {
         if (username.toLowerCase() === ADMIN_USERNAME.toLowerCase()) {
             return { success: false, message: 'Tên đăng nhập không được sử dụng!' };
@@ -1698,12 +1418,13 @@ const Auth = {
         this.saveUsers(users);
         sendWebhook('new_user', { username, email });
         if (!_isSyncProcessing) {
-            publishMqtt('user_sync', { action: 'created', userId: newUser.id, user: newUser });
-            broadcastSync({ type: 'user_sync', action: 'created', userId: newUser.id, user: newUser });
+            publishMqtt('user_sync', { action: 'created', user: newUser });
+            broadcastSync({ type: 'user_sync', action: 'created', user: newUser });
+            forceSyncToAllUsers(true);
         }
         return { success: true, message: 'Đăng ký thành công!', user: newUser };
     },
-
+    
     updateBalance(userId, amount, description = '') {
         const users = this.getUsers();
         const user = users.find(u => u.id === userId);
@@ -1731,7 +1452,7 @@ const Auth = {
         }
         return user;
     },
-
+    
     addPurchasedFile(userId, fileId, fileName) {
         const users = this.getUsers();
         const user = users.find(u => u.id === userId);
@@ -1751,14 +1472,14 @@ const Auth = {
         }
         return user;
     },
-
+    
     hasPurchasedFile(userId, fileId) {
         const user = this.getUserById(userId);
         if (!user) return false;
         user.purchasedFiles = user.purchasedFiles || [];
         return user.purchasedFiles.some(f => f.fileId === fileId);
     },
-
+    
     getVipInfo(user) {
         const level = user.vipLevel || 0;
         const config = VIP_CONFIG[level] || VIP_CONFIG[0];
@@ -1766,7 +1487,7 @@ const Auth = {
         const progress = nextLevel ? Math.min((user.totalDeposit || 0) / nextLevel.minDeposit * 100, 100) : 100;
         return { level, config, nextLevel, progress, discount: config.discount, name: config.name };
     },
-
+    
     updateVip(userId) {
         const users = this.getUsers();
         const user = users.find(u => u.id === userId);
@@ -1790,7 +1511,7 @@ const Auth = {
         forceSyncToAllUsers(true);
         return user;
     },
-
+    
     addDeposit(userId, amount) {
         const user = this.updateBalance(userId, amount, 'Nạp tiền thành công');
         if (!user) return null;
@@ -1815,17 +1536,14 @@ const Auth = {
         }
         return user;
     },
-
+    
     getDiscount(userId) {
         const user = this.getUserById(userId);
         if (!user) return 0;
         const vipInfo = this.getVipInfo(user);
         return vipInfo.discount;
     },
-
-    // ============================================================
-    //  FIX: createDepositRequest - GỬI YÊU CẦU NẠP TIỀN
-    // ============================================================
+    
     createDepositRequest(userId, amount, method) {
         const users = this.getUsers();
         const user = users.find(u => u.id === userId);
@@ -1842,43 +1560,25 @@ const Auth = {
         };
         user.depositRequests.push(request);
         this.saveUsers(users);
-
-        const syncData = {
-            status: 'pending',
-            userId: user.id,
-            username: user.username,
-            amount: Number(amount),
-            method: method,
-            requestId: request.id,
-            createdAt: request.createdAt,
-            request: request
-        };
-
-        // Gửi MQTT với retain true để admin reconnect vẫn nhận được
-        publishMqtt(`deposit_request/${request.id}`, syncData, { qos: 1, retain: true });
-        publishMqtt('deposit', syncData, { qos: 1, retain: false });
-        broadcastSync({ type: 'deposit_request', ...syncData });
-        sendWebhook('deposit_request', { userId, username: user.username, amount, method, requestId: request.id });
-
-        showToast(`Đã gửi yêu cầu nạp ${amount.toLocaleString()}đ!`, 'fas fa-clock', 'warning');
-
-        // Nếu admin đang online, hiển thị ngay
+        const syncData = { status: 'pending', userId: user.id, username: user.username, amount: amount, method: method, requestId: request.id };
+        if (!_isSyncProcessing) {
+            publishMqtt('deposit', syncData);
+            broadcastSync({ type: 'deposit', ...syncData });
+            sendWebhook('deposit_request', { userId, username: user.username, amount, method });
+            forceSyncToAllUsers(true);
+        }
         if (APP.isAdmin) {
             setTimeout(() => {
                 renderDepositRequests();
                 renderAdminDashboard();
                 const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
-                if (DOM.pendingBadge) {
-                    DOM.pendingBadge.textContent = pendingCount;
-                    DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`;
-                }
+                if (DOM.pendingBadge) { DOM.pendingBadge.textContent = pendingCount; DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; }
                 showToast(`📢 Yêu cầu nạp ${amount.toLocaleString()}đ từ ${user.username}!`, 'fas fa-bell', 'warning');
             }, 10);
         }
-
         return request;
     },
-
+    
     getAllDepositRequests() {
         const users = this.getUsers();
         const all = [];
@@ -1894,16 +1594,15 @@ const Auth = {
         all.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         return all;
     },
-
-    // ============================================================
-    //  FIX: approveDeposit - DUYỆT NẠP TIỀN + SYNC
-    // ============================================================
+    
+    // FIX: APPROVE DEPOSIT - CỘNG TIỀN CHÍNH XÁC + KIỂM TRA TRÙNG
     approveDeposit(requestId) {
+        // KIỂM TRA TRÙNG LẶP
         if (isDepositProcessed(requestId)) {
             showToast('⚠️ Yêu cầu này đã được xử lý trước đó!', 'fas fa-exclamation-triangle', 'warning');
             return null;
         }
-
+        
         const users = this.getUsers();
         let foundUser = null, foundRequest = null, foundIndex = -1;
         for (let i = 0; i < users.length; i++) {
@@ -1922,22 +1621,22 @@ const Auth = {
             showToast('❌ Không tìm thấy yêu cầu chờ duyệt!', 'fas fa-times-circle', 'error');
             return null;
         }
-
+        
         foundRequest.status = 'approved';
         foundRequest.updatedAt = new Date().toISOString();
         const amount = foundRequest.amount;
-
+        
         const oldBalance = foundUser.balance || 0;
         foundUser.balance = oldBalance + amount;
         foundUser.totalDeposit = (foundUser.totalDeposit || 0) + amount;
-
+        
         const newLevel = this.calculateVipLevel(foundUser.totalDeposit);
         if (newLevel > (foundUser.vipLevel || 0)) {
             const bonusPoints = (newLevel - (foundUser.vipLevel || 0)) * 1000;
             foundUser.vipPoints = (foundUser.vipPoints || 0) + bonusPoints;
             foundUser.vipLevel = newLevel;
         }
-
+        
         foundUser.history = foundUser.history || [];
         foundUser.history.unshift({
             id: '#DEP-' + Date.now().toString(36).toUpperCase(),
@@ -1946,12 +1645,11 @@ const Auth = {
             status: 'Thành công',
             time: new Date().toLocaleString('vi-VN')
         });
-
+        
         this.saveUsers(users);
         addProcessedDeposit(requestId);
         sendWebhook('deposit_approved', { userId: foundUser.id, username: foundUser.username, amount: amount });
-
-        // === GỬI SYNC ĐẾN TẤT CẢ USER ===
+        
         const syncData = {
             status: 'approved',
             userId: foundUser.id,
@@ -1961,21 +1659,28 @@ const Auth = {
             newBalance: foundUser.balance,
             newTotalDeposit: foundUser.totalDeposit,
             newVipLevel: foundUser.vipLevel,
-            newVipPoints: foundUser.vipPoints,
-            timestamp: Date.now()
+            newVipPoints: foundUser.vipPoints
         };
-
-        // Gửi MQTT
-        publishMqtt('deposit_approved', syncData, { qos: 1, retain: false });
-        broadcastSync({ type: 'deposit_approved', ...syncData });
-
-        // Force sync toàn bộ
-        setTimeout(() => {
-            forceSyncToAllUsers(false);
-            publishFullState({ force: true });
-        }, 100);
-
-        // === CẬP NHẬT UI CHO USER HIỆN TẠI ===
+        if (!_isSyncProcessing) {
+            publishMqtt('deposit_updated', syncData);
+            broadcastSync({ type: 'deposit_updated', ...syncData });
+            publishMqtt('admin_action', { 
+                action_type: 'approve_deposit', 
+                userId: foundUser.id, 
+                username: foundUser.username, 
+                amount: amount,
+                requestId: requestId
+            });
+            broadcastSync({ type: 'admin_action', 
+                action_type: 'approve_deposit', 
+                userId: foundUser.id, 
+                username: foundUser.username, 
+                amount: amount,
+                requestId: requestId
+            });
+            forceSyncToAllUsers(true);
+        }
+        
         const current = this.getCurrentUser();
         if (current && current.id === foundUser.id) {
             current.balance = foundUser.balance;
@@ -1994,12 +1699,13 @@ const Auth = {
             renderHistory();
             updateVIPUI(foundUser);
             checkAchievements(foundUser.id);
-            showToast(`💰 Bạn đã nhận ${amount.toLocaleString()}đ!`, 'fas fa-wallet', 'success');
-            triggerConfetti();
+            if (!_isSyncProcessing) {
+                showToast(`💰 Bạn đã nhận ${amount.toLocaleString()}đ!`, 'fas fa-wallet', 'success');
+                triggerConfetti();
+            }
             updateRevenueChart();
         }
-
-        // === CẬP NHẬT UI CHO ADMIN ===
+        
         if (APP.isAdmin) {
             setTimeout(() => {
                 renderDepositRequests();
@@ -2007,24 +1713,23 @@ const Auth = {
                 renderAdminUsers();
                 updateRealStats();
                 updateRevenueChart();
-                const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
-                if (DOM.pendingBadge) {
-                    DOM.pendingBadge.textContent = pendingCount;
-                    DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`;
+                const pendingCount = this.getAllDepositRequests().filter(r => r.status === 'pending').length;
+                if (DOM.pendingBadge) { 
+                    DOM.pendingBadge.textContent = pendingCount; 
+                    DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; 
                 }
-                showToast(`✅ Đã duyệt ${amount.toLocaleString()}đ cho ${foundUser.username}!`, 'fas fa-check-circle', 'success');
-            }, 50);
+                if (!_isSyncProcessing) {
+                    showToast(`✅ Đã duyệt ${amount.toLocaleString()}đ cho ${foundUser.username}!`, 'fas fa-check-circle', 'success');
+                }
+                forceSyncToAllUsers(true);
+            }, 10);
         }
-
-        // Thêm một lần force sync nữa sau 500ms
-        setTimeout(() => {
-            forceSyncToAllUsers(false);
-            publishFullState({ force: true });
-        }, 500);
-
+        
+        setTimeout(() => forceSyncToAllUsers(true), 200);
         return foundRequest;
     },
-
+    
+    // REJECT DEPOSIT
     rejectDeposit(requestId, reason = '') {
         const users = this.getUsers();
         let foundRequest = null, foundUser = null;
@@ -2052,30 +1757,47 @@ const Auth = {
             username: foundUser.username, 
             amount: foundRequest.amount, 
             reason: reason,
-            requestId: requestId,
-            timestamp: Date.now()
+            requestId: requestId
         };
-        publishMqtt('deposit_updated', syncData);
-        broadcastSync({ type: 'deposit_updated', ...syncData });
-        sendWebhook('deposit_rejected', { userId: foundUser.id, username: foundUser.username, amount: foundRequest.amount, reason });
-        setTimeout(() => forceSyncToAllUsers(true), 100);
-        
+        if (!_isSyncProcessing) {
+            publishMqtt('deposit_updated', syncData);
+            broadcastSync({ type: 'deposit_updated', ...syncData });
+            publishMqtt('admin_action', { 
+                action_type: 'reject_deposit', 
+                userId: foundUser.id, 
+                username: foundUser.username, 
+                amount: foundRequest.amount,
+                requestId: requestId
+            });
+            broadcastSync({ type: 'admin_action', 
+                action_type: 'reject_deposit', 
+                userId: foundUser.id, 
+                username: foundUser.username, 
+                amount: foundRequest.amount,
+                requestId: requestId
+            });
+            sendWebhook('deposit_rejected', { userId: foundUser.id, username: foundUser.username, amount: foundRequest.amount, reason });
+            forceSyncToAllUsers(true);
+        }
         if (APP.isAdmin) {
             setTimeout(() => { 
                 renderDepositRequests(); 
                 renderAdminDashboard();
-                const pendingCount = Auth.getAllDepositRequests().filter(r => r.status === 'pending').length;
-                if (DOM.pendingBadge) {
-                    DOM.pendingBadge.textContent = pendingCount;
-                    DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`;
+                const pendingCount = this.getAllDepositRequests().filter(r => r.status === 'pending').length;
+                if (DOM.pendingBadge) { 
+                    DOM.pendingBadge.textContent = pendingCount; 
+                    DOM.pendingBadge.className = `badge ${pendingCount > 0 ? 'warning' : 'success'}`; 
                 }
-                showToast(`❌ Đã từ chối ${foundRequest.amount.toLocaleString()}đ của ${foundUser.username}!`, 'fas fa-times-circle', 'error');
+                if (!_isSyncProcessing) {
+                    showToast(`❌ Đã từ chối ${foundRequest.amount.toLocaleString()}đ của ${foundUser.username}!`, 'fas fa-times-circle', 'error');
+                }
+                forceSyncToAllUsers(true);
             }, 10);
         }
         setTimeout(() => forceSyncToAllUsers(true), 200);
         return foundRequest;
     },
-
+    
     cancelDepositRequest(userId, requestId) {
         const user = this.getUserById(userId);
         if (!user) return null;
@@ -2083,17 +1805,18 @@ const Auth = {
         const idx = user.depositRequests.findIndex(r => r.id === requestId);
         if (idx === -1) return null;
         user.depositRequests.splice(idx, 1);
-        this.saveUsers(this.getUsers());
+        this.saveUsers(users);
+        forceSyncToAllUsers(true);
         return true;
     },
-
+    
     getReviews() {
         try { return JSON.parse(localStorage.getItem(STORAGE_KEY_REVIEWS)) || []; } catch { return []; }
     },
     saveReviews(reviews) {
         localStorage.setItem(STORAGE_KEY_REVIEWS, JSON.stringify(reviews));
     },
-
+    
     addReview(userId, username, fileId, fileName, rating, content, images) {
         const reviews = this.getReviews();
         const review = {
@@ -2125,7 +1848,7 @@ const Auth = {
         }
         return review;
     },
-
+    
     getTopDepositors(period = 'all') {
         const users = this.getUsers();
         const now = new Date();
@@ -2147,7 +1870,7 @@ const Auth = {
         }
         return filtered.sort((a, b) => (b.totalDeposit || 0) - (a.totalDeposit || 0));
     },
-
+    
     getRealStats() {
         const users = this.getUsers();
         const reviews = this.getReviews();
@@ -2183,7 +1906,7 @@ const Auth = {
             topAmount: topAmount
         };
     },
-
+    
     getAdminStats() {
         const users = this.getUsers();
         const reviews = this.getReviews();
@@ -2207,7 +1930,7 @@ const Auth = {
         });
         return { totalUsers, totalBalance, pendingDeposits, todayRevenue, vipUsers, totalReviews: reviews.length };
     },
-
+    
     getEvents() {
         try { return JSON.parse(localStorage.getItem(STORAGE_KEY_EVENTS)) || EVENTS; } catch { return EVENTS; }
     },
@@ -2255,7 +1978,7 @@ const Auth = {
         }
         return true;
     },
-
+    
     getGiftcodes() {
         try { return JSON.parse(localStorage.getItem(STORAGE_KEY_GIFTCODES)) || []; } catch { return []; }
     },
@@ -2306,7 +2029,7 @@ const Auth = {
         }
         return { success: false, message: 'Lỗi khi cộng tiền!' };
     },
-
+    
     editUser(userId, data) {
         const users = this.getUsers();
         const user = users.find(u => u.id === userId);
@@ -2325,7 +2048,7 @@ const Auth = {
         }
         return user;
     },
-
+    
     changePassword(userId, newPassword) {
         const users = this.getUsers();
         const user = users.find(u => u.id === userId);
@@ -2339,7 +2062,7 @@ const Auth = {
         }
         return user;
     },
-
+    
     lockUser(userId) {
         const users = this.getUsers();
         const user = users.find(u => u.id === userId);
@@ -2359,7 +2082,7 @@ const Auth = {
         }
         return user;
     },
-
+    
     unlockUser(userId) {
         const users = this.getUsers();
         const user = users.find(u => u.id === userId);
@@ -2373,7 +2096,7 @@ const Auth = {
         }
         return user;
     },
-
+    
     deleteUser(userId) {
         if (userId === 'admin_001') return { success: false, message: 'Không thể xóa admin!' };
         const user = this.getUserById(userId);
@@ -2392,7 +2115,7 @@ const Auth = {
         }
         return { success: true, message: 'Đã xóa user!' };
     },
-
+    
     getSpinWeights() {
         try { return JSON.parse(localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS)) || SPIN_PRIZES.map(() => 1); } catch { return SPIN_PRIZES.map(() => 1); }
     },
@@ -2964,7 +2687,7 @@ const APP = {
 };
 
 // ============================================================
-//  DOM REFS
+//  DOM REFS (GIỮ NGUYÊN)
 // ============================================================
 const DOM = {
     cursor: document.getElementById('cursor'),
@@ -3130,7 +2853,7 @@ const DOM = {
 };
 
 // ============================================================
-//  SECURITY - CHỐNG F12, DEBUG, XSS
+//  SECURITY - CHỐNG F12, DEBUG, XSS (GIỮ NGUYÊN)
 // ============================================================
 (function antiF12Pro() {
     document.addEventListener('keydown', function(e) {
@@ -3248,7 +2971,7 @@ function initSecurity() {
 setTimeout(initSecurity, 1000);
 
 // ============================================================
-//  SESSION MANAGEMENT
+//  SESSION MANAGEMENT (GIỮ NGUYÊN)
 // ============================================================
 function checkSession() {
     const user = Auth.getCurrentUser();
@@ -3334,7 +3057,7 @@ function loginSuccess(user) {
 }
 
 // ============================================================
-//  VIP UI UPDATE
+//  VIP UI UPDATE (GIỮ NGUYÊN)
 // ============================================================
 function updateVIPUI(user) {
     const vipInfo = Auth.getVipInfo(user);
@@ -3363,7 +3086,7 @@ function updateVIPUI(user) {
 }
 
 // ============================================================
-//  AUTH HANDLERS
+//  AUTH HANDLERS (GIỮ NGUYÊN)
 // ============================================================
 function handleLoginSubmit(e) {
     e.preventDefault();
@@ -3432,7 +3155,7 @@ function togglePassword(inputId, icon) {
 }
 
 // ============================================================
-//  ADMIN FUNCTIONS
+//  ADMIN FUNCTIONS - GIỮ NGUYÊN
 // ============================================================
 function renderAdminQRConfig() {
     const config = getBankConfig();
@@ -3791,101 +3514,6 @@ function adminDeleteFile(fileId) {
     });
 }
 
-function adminAddBalance(userId) {
-    if (!APP.isAdmin) {
-        showToast('Không có quyền!', 'fas fa-triangle-exclamation', 'error');
-        return;
-    }
-
-    Swal.fire({
-        title: 'Cộng tiền cho user',
-        text: 'Nhập số tiền muốn cộng (VNĐ)',
-        icon: 'question',
-        background: '#040814',
-        color: '#fff',
-        input: 'number',
-        inputPlaceholder: 'Ví dụ: 50000',
-        confirmButtonColor: '#00ff88',
-        cancelButtonColor: '#ff4d4d',
-        showCancelButton: true,
-        confirmButtonText: 'Cộng tiền',
-        cancelButtonText: 'Hủy'
-    }).then(res => {
-        if (res.isConfirmed && res.value) {
-            const amount = parseInt(res.value);
-            if (amount > 0) {
-                const users = Auth.getUsers();
-                const user = users.find(u => u.id === userId);
-                if (!user) {
-                    showToast('User không tồn tại!', 'fas fa-times-circle', 'error');
-                    return;
-                }
-
-                const oldBalance = user.balance || 0;
-                user.balance = oldBalance + amount;
-                user.totalDeposit = (user.totalDeposit || 0) + amount;
-
-                const newLevel = Auth.calculateVipLevel(user.totalDeposit);
-                if (newLevel > (user.vipLevel || 0)) {
-                    const bonusPoints = (newLevel - (user.vipLevel || 0)) * 1000;
-                    user.vipPoints = (user.vipPoints || 0) + bonusPoints;
-                    user.vipLevel = newLevel;
-                }
-
-                user.history = user.history || [];
-                user.history.unshift({
-                    id: '#ADMIN-' + Date.now().toString(36).toUpperCase(),
-                    desc: `Admin cộng tiền thủ công`,
-                    amount: `+${amount.toLocaleString()}đ`,
-                    status: 'Thành công',
-                    time: new Date().toLocaleString('vi-VN')
-                });
-
-                Auth.saveUsers(users);
-
-                if (APP.isLoggedIn && APP.currentUser.id === userId) {
-                    APP.balance = user.balance;
-                    APP.totalDeposit = user.totalDeposit;
-                    APP.vipLevel = user.vipLevel;
-                    APP.vipPoints = user.vipPoints;
-                    if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
-                    if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
-                    renderHistory();
-                    updateVIPUI(user);
-                    showToast(`💰 Bạn đã nhận ${amount.toLocaleString()}đ từ admin!`, 'fas fa-wallet', 'success');
-                    triggerConfetti();
-                }
-
-                // SYNC
-                const syncData = {
-                    status: 'approved',
-                    userId: user.id,
-                    username: user.username,
-                    amount: amount,
-                    requestId: 'ADMIN-' + Date.now().toString(36).toUpperCase(),
-                    newBalance: user.balance,
-                    newTotalDeposit: user.totalDeposit,
-                    newVipLevel: user.vipLevel,
-                    newVipPoints: user.vipPoints,
-                    timestamp: Date.now()
-                };
-                publishMqtt('deposit_approved', syncData, { qos: 1, retain: false });
-                broadcastSync({ type: 'deposit_approved', ...syncData });
-                setTimeout(() => {
-                    forceSyncToAllUsers(false);
-                    publishFullState({ force: true });
-                }, 100);
-
-                renderAdminUsers();
-                renderAdminDashboard();
-                updateRealStats();
-                updateRevenueChart();
-                showToast(`✅ Đã cộng ${amount.toLocaleString()}đ cho ${user.username}!`, 'fas fa-check-circle', 'success');
-            }
-        }
-    });
-}
-
 function renderAdminUsers() {
     const tbody = DOM.adminUserBody;
     if (!tbody) return;
@@ -3916,6 +3544,30 @@ function renderAdminUsers() {
             </div></td>
         </tr>`;
     }).join('');
+}
+
+function adminAddBalance(userId) {
+    Swal.fire({ title: 'Cộng tiền cho user', text: 'Nhập số tiền muốn cộng (VNĐ)', icon: 'question', background: '#040814', color: '#fff', input: 'number', inputPlaceholder: 'Ví dụ: 50000', confirmButtonColor: '#00ff88', cancelButtonColor: '#ff4d4d', showCancelButton: true, confirmButtonText: 'Cộng tiền', cancelButtonText: 'Hủy' })
+        .then(res => {
+            if (res.isConfirmed && res.value) {
+                const amount = parseInt(res.value);
+                if (amount > 0) {
+                    const user = Auth.addDeposit(userId, amount);
+                    if (user) { 
+                        showToast(`Đã cộng ${amount.toLocaleString()}đ cho ${user.username}!`, 'fas fa-circle-check', 'success'); 
+                        renderAdminUsers(); 
+                        if (APP.currentUser && APP.currentUser.id === userId) { 
+                            APP.balance = user.balance; 
+                            APP.totalDeposit = user.totalDeposit; 
+                            APP.vipLevel = user.vipLevel; 
+                            DOM.userBalance.textContent = APP.balance.toLocaleString(); 
+                            updateVIPUI(user); 
+                        }
+                    }
+                    setTimeout(() => forceSyncToAllUsers(true), 100);
+                }
+            }
+        });
 }
 
 function adminEditUser(userId) {
@@ -4342,7 +3994,12 @@ function spinTheWheel() {
 }
 
 // ============================================================
-//  RENDER FILES, HISTORY, REVIEWS, MISSIONS, EVENTS, TOP
+//  RENDER FILES, HISTORY, REVIEWS, MISSIONS, EVENTS, TOP - GIỮ NGUYÊN
+// ============================================================
+// Các hàm renderFiles, renderHistory, renderReviews, renderMissions, renderEvents, renderTopRanking, showFileDetail, updateRealStats, populateReviewFiles, filterFiles, changeFilePage, loadMoreProducts, searchProducts, handleRedeemCode, switchTab, switchAdminTab, adminSaveSupport, adminSaveSettings, triggerConfetti, openModal, closeModal, renderUserDashboard, adminShowTools, createBackup, restoreFromBackup, exportAllData, importAllData, repairCorruptedData, resetToDefaultData, globalSearch, updateSupportUI, openSupportLink, toggleMusic, nextTrack, prevTrack
+
+// ============================================================
+//  RENDER FILES
 // ============================================================
 function renderFiles() {
     const container = DOM.productGrid;
@@ -4849,7 +4506,7 @@ function adminShowTools() {
 
 function createBackup() {
     try {
-        const backup = { timestamp: new Date().toISOString(), version: '33.0', data: { files: localStorage.getItem(STORAGE_KEY_FILES), users: localStorage.getItem(STORAGE_KEY_USERS), cart: localStorage.getItem(STORAGE_KEY_CART), reviews: localStorage.getItem(STORAGE_KEY_REVIEWS), giftcodes: localStorage.getItem(STORAGE_KEY_GIFTCODES), events: localStorage.getItem(STORAGE_KEY_EVENTS), bank: localStorage.getItem(STORAGE_KEY_BANK), support: localStorage.getItem(STORAGE_KEY_SUPPORT), spinWeights: localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS), processedDeposits: localStorage.getItem(STORAGE_KEY_PROCESSED_DEPOSITS) } };
+        const backup = { timestamp: new Date().toISOString(), version: '31.0', data: { files: localStorage.getItem(STORAGE_KEY_FILES), users: localStorage.getItem(STORAGE_KEY_USERS), cart: localStorage.getItem(STORAGE_KEY_CART), reviews: localStorage.getItem(STORAGE_KEY_REVIEWS), giftcodes: localStorage.getItem(STORAGE_KEY_GIFTCODES), events: localStorage.getItem(STORAGE_KEY_EVENTS), bank: localStorage.getItem(STORAGE_KEY_BANK), support: localStorage.getItem(STORAGE_KEY_SUPPORT), spinWeights: localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS), processedDeposits: localStorage.getItem(STORAGE_KEY_PROCESSED_DEPOSITS) } };
         localStorage.setItem(BACKUP_KEY, JSON.stringify(backup));
         console.log('[💾] Backup dữ liệu thành công lúc:', backup.timestamp);
         return backup;
@@ -4901,7 +4558,7 @@ setInterval(createBackup, 300000);
 
 function exportAllData() {
     try {
-        const data = { version: '33.0', exportedAt: new Date().toISOString(), shopName: 'Tấn Dũng FF', data: { files: JSON.parse(localStorage.getItem(STORAGE_KEY_FILES) || '[]'), users: JSON.parse(localStorage.getItem(STORAGE_KEY_USERS) || '[]'), cart: JSON.parse(localStorage.getItem(STORAGE_KEY_CART) || '[]'), reviews: JSON.parse(localStorage.getItem(STORAGE_KEY_REVIEWS) || '[]'), giftcodes: JSON.parse(localStorage.getItem(STORAGE_KEY_GIFTCODES) || '[]'), events: JSON.parse(localStorage.getItem(STORAGE_KEY_EVENTS) || '[]'), bank: JSON.parse(localStorage.getItem(STORAGE_KEY_BANK) || '{}'), support: JSON.parse(localStorage.getItem(STORAGE_KEY_SUPPORT) || '{}'), spinWeights: JSON.parse(localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) || '[]'), processedDeposits: JSON.parse(localStorage.getItem(STORAGE_KEY_PROCESSED_DEPOSITS) || '[]') } };
+        const data = { version: '31.0', exportedAt: new Date().toISOString(), shopName: 'Tấn Dũng FF', data: { files: JSON.parse(localStorage.getItem(STORAGE_KEY_FILES) || '[]'), users: JSON.parse(localStorage.getItem(STORAGE_KEY_USERS) || '[]'), cart: JSON.parse(localStorage.getItem(STORAGE_KEY_CART) || '[]'), reviews: JSON.parse(localStorage.getItem(STORAGE_KEY_REVIEWS) || '[]'), giftcodes: JSON.parse(localStorage.getItem(STORAGE_KEY_GIFTCODES) || '[]'), events: JSON.parse(localStorage.getItem(STORAGE_KEY_EVENTS) || '[]'), bank: JSON.parse(localStorage.getItem(STORAGE_KEY_BANK) || '{}'), support: JSON.parse(localStorage.getItem(STORAGE_KEY_SUPPORT) || '{}'), spinWeights: JSON.parse(localStorage.getItem(STORAGE_KEY_SPIN_WEIGHTS) || '[]'), processedDeposits: JSON.parse(localStorage.getItem(STORAGE_KEY_PROCESSED_DEPOSITS) || '[]') } };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -5055,10 +4712,10 @@ function prevTrack() { currentTrack = (currentTrack - 1 + trackList.length) % tr
     musicStatus.textContent = trackList[currentTrack] + (isPlaying ? ' 🔥' : ' ⏸️'); if (isPlaying) showToast(`Bài: ${trackList[currentTrack]}`, 'fas fa-backward'); }
 
 // ============================================================
-//  AUTO SYNC ĐỊNH KỲ
+//  AUTO SYNC ĐỊNH KỲ - GIẢM TẦN SUẤT
 // ============================================================
 setInterval(() => {
-    if (APP.isAdmin === true && mqttClient && mqttClient.connected && !_isSyncProcessing) {
+    if (mqttClient && mqttClient.connected && !_isSyncProcessing) {
         const currentHash = getCurrentStateHash();
         if (currentHash !== lastStateHash) {
             publishFullState({ silent: true });
@@ -5226,12 +4883,11 @@ window.updateSyncStatus = updateSyncStatus;
 window.getProcessedDeposits = getProcessedDeposits;
 window.addProcessedDeposit = addProcessedDeposit;
 window.isDepositProcessed = isDepositProcessed;
-window.renderDepositRequests = renderDepositRequests;
 
-console.log('🚀 SHOP TẤN DŨNG FF v33.0 - MQTT SYNC HOÀN CHỈNH!');
-console.log('✅ USER TẠO YÊU CẦU -> ADMIN NHẬN NGAY!');
-console.log('✅ ADMIN DUYỆT -> USER NHẬN TIỀN NGAY!');
-console.log('✅ KHÔNG LỖI TRÙNG LẶP - KHÔNG MẤT TIỀN!');
+console.log('🚀 SHOP TẤN DŨNG FF v31.0 - ULTIMATE SYNC!');
+console.log('📁 Files:', FILE_DATA.length);
+console.log('📡 MQTT: Tự động kết nối đến broker.emqx.io');
+console.log('✅ FIX: SYNC HOÀN HẢO - KHÔNG LỖI DUYỆT - CỘNG TIỀN CHÍNH XÁC 100%!');
 
 // ============================================================
 //  INIT
@@ -5297,7 +4953,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     }
     document.getElementById('spinTotalSpent').textContent = '0đ';
-    console.log('🚀 SHOP TẤN DŨNG FF v33.0 - MQTT SYNC HOÀN CHỈNH!');
+    console.log('🚀 SHOP TẤN DŨNG FF v31.0 - ULTIMATE SYNC!');
     console.log('✅ TẤT CẢ CHỨC NĂNG HOÀN THIỆN!');
 });
 
