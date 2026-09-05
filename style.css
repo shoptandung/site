@@ -1,6 +1,6 @@
 /* ==================================================== 
    SHOP TẤN DŨNG FF - STYLE HOÀN CHỈNH v31.0 ULTIMATE
-   DATABASE + ADMIN COMMANDS + RESPONSIVE
+   DATABASE + ADMIN COMMANDS + RESPONSIVE + FIX CHECKBOX
    ==================================================== */
 
 /* ===== CHỐNG PHÓNG TO MÀN HÌNH ===== */
@@ -61,6 +61,69 @@ body {
     position: relative;
     font-size: 14px;
     line-height: 1.6;
+}
+
+/* ===== FIX CHECKBOX - QUAN TRỌNG ===== */
+#agreeTerms {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    opacity: 1 !important;
+    width: 18px !important;
+    height: 18px !important;
+    accent-color: #00f0ff !important;
+    -webkit-appearance: checkbox !important;
+    appearance: checkbox !important;
+    position: relative !important;
+    z-index: 9999 !important;
+    flex-shrink: 0 !important;
+    margin: 0 !important;
+    display: inline-block !important;
+}
+
+#agreeTerms:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+}
+
+/* Fix cho label chứa checkbox */
+.form-options label {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+    z-index: 9999 !important;
+    position: relative !important;
+}
+
+#registerForm .form-options {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+
+#registerForm .form-options label {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+
+input[type="checkbox"] {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    opacity: 1 !important;
+    -webkit-appearance: checkbox !important;
+    appearance: checkbox !important;
+}
+
+/* Fix cho tất cả checkbox trong form */
+#registerForm input[type="checkbox"] {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    opacity: 1 !important;
+    width: 18px !important;
+    height: 18px !important;
+    position: relative !important;
+    z-index: 9999 !important;
+    flex-shrink: 0 !important;
 }
 
 /* ===== CUSTOM CURSOR 4K ===== */

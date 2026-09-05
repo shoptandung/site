@@ -11,6 +11,114 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="stylesheet" href="style.css">
+    
+    <!-- ===== FIX CHECKBOX NGAY KHI LOAD ===== -->
+    <script>
+        // SIÊU FIX CHECKBOX ĐIỀU KHOẢN
+        (function fixCheckboxImmediately() {
+            function forceFixCheckbox() {
+                const container = document.getElementById('termsCheckboxContainer');
+                if (!container) return;
+                
+                const hiddenCheckbox = document.getElementById('agreeTerms');
+                const customDiv = document.getElementById('customCheckbox');
+                
+                if (!hiddenCheckbox || !customDiv) return;
+                
+                // Đảm bảo checkbox hoạt động
+                hiddenCheckbox.style.pointerEvents = 'auto';
+                hiddenCheckbox.style.cursor = 'pointer';
+                hiddenCheckbox.style.opacity = '1';
+                hiddenCheckbox.style.position = 'relative';
+                hiddenCheckbox.style.zIndex = '99999';
+                hiddenCheckbox.style.width = '24px';
+                hiddenCheckbox.style.height = '24px';
+                hiddenCheckbox.style.left = '0';
+                hiddenCheckbox.style.top = '0';
+                hiddenCheckbox.style.flexShrink = '0';
+                hiddenCheckbox.style.display = 'inline-block';
+                hiddenCheckbox.style.accentColor = '#00f0ff';
+                
+                // Xóa event cũ bằng clone
+                const newCheckbox = hiddenCheckbox.cloneNode(true);
+                hiddenCheckbox.parentNode.replaceChild(newCheckbox, hiddenCheckbox);
+                
+                // Cập nhật lại biến
+                const newHidden = document.getElementById('agreeTerms');
+                
+                // Event listener cho checkbox thật
+                newHidden.addEventListener('change', function(e) {
+                    e.stopPropagation();
+                    const checkIcon = document.querySelector('#customCheckbox i');
+                    const container2 = document.getElementById('termsCheckboxContainer');
+                    if (this.checked) {
+                        document.getElementById('customCheckbox').style.borderColor = '#00ff88';
+                        document.getElementById('customCheckbox').style.background = 'rgba(0,255,136,0.15)';
+                        if (checkIcon) checkIcon.style.opacity = '1';
+                        container2?.classList.add('checkbox-checked');
+                        console.log('✅ Checkbox ĐIỀU KHOẢN đã được tick!');
+                    } else {
+                        document.getElementById('customCheckbox').style.borderColor = 'var(--primary)';
+                        document.getElementById('customCheckbox').style.background = 'rgba(0,0,0,0.2)';
+                        if (checkIcon) checkIcon.style.opacity = '0';
+                        container2?.classList.remove('checkbox-checked');
+                        console.log('❌ Checkbox ĐIỀU KHOẢN đã bỏ tick');
+                    }
+                });
+                
+                // Click vào label
+                const label = container.querySelector('label');
+                if (label) {
+                    label.addEventListener('click', function(e) {
+                        if (e.target.tagName === 'A') return;
+                        e.preventDefault();
+                        const cb = document.getElementById('agreeTerms');
+                        if (cb) {
+                            cb.checked = !cb.checked;
+                            cb.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    });
+                }
+                
+                // Click vào custom checkbox
+                customDiv.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const cb = document.getElementById('agreeTerms');
+                    if (cb) {
+                        cb.checked = !cb.checked;
+                        cb.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+                
+                console.log('✅ SIÊU FIX CHECKBOX thành công!');
+            }
+            
+            // Chạy nhiều lần để đảm bảo
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    setTimeout(forceFixCheckbox, 10);
+                    setTimeout(forceFixCheckbox, 100);
+                    setTimeout(forceFixCheckbox, 300);
+                    setTimeout(forceFixCheckbox, 500);
+                    setTimeout(forceFixCheckbox, 1000);
+                });
+            } else {
+                setTimeout(forceFixCheckbox, 10);
+                setTimeout(forceFixCheckbox, 100);
+                setTimeout(forceFixCheckbox, 300);
+                setTimeout(forceFixCheckbox, 500);
+                setTimeout(forceFixCheckbox, 1000);
+            }
+            
+            // MutationObserver đề phòng DOM thay đổi
+            const observer = new MutationObserver(function() {
+                if (document.getElementById('agreeTerms')) {
+                    setTimeout(forceFixCheckbox, 10);
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        })();
+    </script>
 </head>
 <body>
 
@@ -39,8 +147,7 @@
         <span id="cartCount">0</span>
     </div>
 
-    <!-- ========== MODALS ========== -->
-    <!-- Login Modal -->
+    <!-- ========== MODAL ĐĂNG NHẬP ========== -->
     <div class="modal-overlay" id="loginModal">
         <div class="modal-box">
             <span class="modal-close" data-modal="loginModal">&times;</span>
@@ -69,7 +176,7 @@
         </div>
     </div>
 
-    <!-- Register Modal -->
+    <!-- ========== MODAL ĐĂNG KÝ (ĐÃ FIX CHECKBOX) ========== -->
     <div class="modal-overlay" id="registerModal">
         <div class="modal-box">
             <span class="modal-close" data-modal="registerModal">&times;</span>
@@ -97,9 +204,23 @@
                         <i class="fas fa-eye toggle-password" onclick="togglePassword('regConfirmPassword', this)"></i>
                     </div>
                 </div>
-                <div class="form-options">
-                    <label><input type="checkbox" id="agreeTerms" required> Đồng ý <a href="#" onclick="showToast('Điều khoản!', 'fas fa-file-contract')">Điều khoản</a></label>
+                <!-- ===== CHECKBOX ĐIỀU KHOẢN - SIÊU FIX ===== -->
+                <div class="form-options" id="termsCheckboxContainer" style="pointer-events:auto !important;cursor:pointer !important;z-index:99999 !important;position:relative !important;padding:10px 0;">
+                    <label style="pointer-events:auto !important;cursor:pointer !important;display:flex !important;align-items:center !important;gap:12px !important;z-index:99999 !important;position:relative !important;font-size:14px !important;color:var(--text-main) !important;">
+                        <div style="position:relative;display:inline-block;flex-shrink:0;">
+                            <input type="checkbox" id="agreeTerms" required style="position:absolute;opacity:0;width:24px;height:24px;cursor:pointer;z-index:99999;pointer-events:auto !important;left:-4px;top:-4px;">
+                            <div id="customCheckbox" style="width:22px;height:22px;border:2px solid var(--primary);border-radius:4px;display:flex;align-items:center;justify-content:center;transition:all 0.3s;background:rgba(0,0,0,0.2);cursor:pointer;">
+                                <i class="fas fa-check" style="color:#00f0ff;font-size:14px;opacity:0;transition:all 0.3s;"></i>
+                            </div>
+                        </div>
+                        <span style="cursor:pointer;">Tôi đã đọc và đồng ý với 
+                            <a href="#" onclick="event.preventDefault(); openModal('termsModal');" style="color:#ffaa00;font-weight:700;text-decoration:underline;pointer-events:auto !important;cursor:pointer !important;">
+                                Điều Khoản Sử Dụng
+                            </a>
+                        </span>
+                    </label>
                 </div>
+                <!-- ===== END FIX ===== -->
                 <button type="submit" class="btn-submit">Đăng Ký</button>
                 <div class="form-footer">
                     <span>Đã có tài khoản? <a href="#" onclick="event.preventDefault(); closeModal('registerModal'); openModal('loginModal');">Đăng nhập</a></span>
@@ -108,7 +229,94 @@
         </div>
     </div>
 
-    <!-- Review Modal -->
+    <!-- ========== MODAL ĐIỀU KHOẢN ========== -->
+    <div class="modal-overlay" id="termsModal">
+        <div class="modal-box" style="max-width:700px;max-height:90vh;overflow-y:auto;">
+            <span class="modal-close" data-modal="termsModal">&times;</span>
+            <h2 style="color:#ffaa00;"><i class="fas fa-file-contract"></i> Điều Khoản Sử Dụng</h2>
+            <div style="color:var(--text-muted);font-size:14px;line-height:1.8;padding:10px 0;">
+                <div style="background:rgba(255,170,0,0.05);border-radius:10px;padding:15px;margin-bottom:15px;border-left:3px solid #ffaa00;">
+                    <strong style="color:#ffaa00;">📌 1. Giới Thiệu</strong>
+                    <p>Chào mừng bạn đến với SHOP TẤN DŨNG. Bằng việc sử dụng dịch vụ của chúng tôi, bạn đồng ý với các điều khoản dưới đây.</p>
+                </div>
+
+                <div style="background:rgba(0,240,255,0.05);border-radius:10px;padding:15px;margin-bottom:15px;border-left:3px solid #00f0ff;">
+                    <strong style="color:#00f0ff;">🔐 2. Tài Khoản Người Dùng</strong>
+                    <ul style="margin:8px 0 0 20px;list-style-type:disc;">
+                        <li>Bạn phải cung cấp thông tin chính xác khi đăng ký tài khoản.</li>
+                        <li>Bạn chịu trách nhiệm bảo mật mật khẩu và mọi hoạt động trên tài khoản.</li>
+                        <li>Chúng tôi có quyền khóa hoặc xóa tài khoản vi phạm điều khoản.</li>
+                    </ul>
+                </div>
+
+                <div style="background:rgba(0,255,136,0.05);border-radius:10px;padding:15px;margin-bottom:15px;border-left:3px solid #00ff88;">
+                    <strong style="color:#00ff88;">🛒 3. Giao Dịch & Mua Bán</strong>
+                    <ul style="margin:8px 0 0 20px;list-style-type:disc;">
+                        <li>Tất cả file/tool đều là sản phẩm số, không hoàn trả sau khi giao dịch.</li>
+                        <li>Giá sản phẩm có thể thay đổi mà không cần thông báo trước.</li>
+                        <li>Bạn chỉ được sử dụng file/tool cho mục đích cá nhân, không được chia sẻ hoặc bán lại.</li>
+                    </ul>
+                </div>
+
+                <div style="background:rgba(255,215,0,0.05);border-radius:10px;padding:15px;margin-bottom:15px;border-left:3px solid #ffd700;">
+                    <strong style="color:#ffd700;">💎 4. Hệ Thống VIP</strong>
+                    <ul style="margin:8px 0 0 20px;list-style-type:disc;">
+                        <li>VIP được tính dựa trên tổng số tiền nạp vào tài khoản.</li>
+                        <li>Cấp VIP càng cao, ưu đãi càng lớn (giảm giá, quà tặng, ưu tiên hỗ trợ).</li>
+                        <li>Điểm VIP không có giá trị quy đổi thành tiền mặt.</li>
+                    </ul>
+                </div>
+
+                <div style="background:rgba(255,0,119,0.05);border-radius:10px;padding:15px;margin-bottom:15px;border-left:3px solid #ff0077;">
+                    <strong style="color:#ff0077;">⚠️ 5. Hành Vi Bị Cấm</strong>
+                    <ul style="margin:8px 0 0 20px;list-style-type:disc;">
+                        <li>Không sử dụng tool/cheat trong các giải đấu chính thức.</li>
+                        <li>Không tấn công hoặc phá hoại hệ thống của shop.</li>
+                        <li>Không lạm dụng lỗ hổng để gian lận.</li>
+                    </ul>
+                </div>
+
+                <div style="background:rgba(100,0,255,0.05);border-radius:10px;padding:15px;margin-bottom:15px;border-left:3px solid #7000ff;">
+                    <strong style="color:#7000ff;">📢 6. Quyền Lợi & Nghĩa Vụ</strong>
+                    <ul style="margin:8px 0 0 20px;list-style-type:disc;">
+                        <li>Chúng tôi cam kết bảo vệ thông tin cá nhân của bạn.</li>
+                        <li>Bạn có quyền yêu cầu hỗ trợ kỹ thuật khi gặp vấn đề.</li>
+                        <li>Mọi phản hồi/góp ý đều được tiếp nhận và xử lý.</li>
+                    </ul>
+                </div>
+
+                <div style="background:rgba(255,170,0,0.05);border-radius:10px;padding:15px;margin-bottom:15px;border-left:3px solid #ff6b00;">
+                    <strong style="color:#ff6b00;">🔒 7. Bảo Mật</strong>
+                    <ul style="margin:8px 0 0 20px;list-style-type:disc;">
+                        <li>Shop sử dụng công nghệ mã hóa để bảo vệ dữ liệu.</li>
+                        <li>Chúng tôi không chia sẻ thông tin cá nhân với bên thứ ba.</li>
+                        <li>Bạn nên đăng xuất sau mỗi phiên làm việc.</li>
+                    </ul>
+                </div>
+
+                <div style="background:rgba(59,130,246,0.05);border-radius:10px;padding:15px;border-left:3px solid #3b82f6;">
+                    <strong style="color:#3b82f6;">📜 8. Điều Khoản Chung</strong>
+                    <ul style="margin:8px 0 0 20px;list-style-type:disc;">
+                        <li>Chúng tôi có quyền thay đổi điều khoản bất kỳ lúc nào.</li>
+                        <li>Khi tiếp tục sử dụng, bạn đồng ý với các thay đổi đó.</li>
+                        <li>Mọi tranh chấp sẽ được giải quyết thông qua thương lượng.</li>
+                    </ul>
+                </div>
+
+                <div style="margin-top:20px;padding:15px;background:rgba(255,170,0,0.08);border-radius:10px;border:1px solid rgba(255,170,0,0.2);text-align:center;">
+                    <p style="color:var(--text-muted);font-size:13px;">
+                        <i class="fas fa-check-circle" style="color:#00ff88;"></i>
+                        Bằng việc đăng ký tài khoản, bạn đã đọc và đồng ý với toàn bộ điều khoản trên.
+                    </p>
+                    <button class="btn-submit" onclick="closeModal('termsModal')" style="width:auto;padding:10px 40px;margin-top:10px;">
+                        <i class="fas fa-check"></i> Tôi Đã Đọc Và Đồng Ý
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== MODAL ĐÁNH GIÁ ========== -->
     <div class="modal-overlay" id="reviewModal">
         <div class="modal-box" style="max-width:500px;">
             <span class="modal-close" data-modal="reviewModal">&times;</span>
@@ -145,7 +353,7 @@
         </div>
     </div>
 
-    <!-- Deposit Modal -->
+    <!-- ========== MODAL NẠP TIỀN ========== -->
     <div class="modal-overlay" id="depositModal">
         <div class="modal-box" style="max-width:600px;">
             <span class="modal-close" data-modal="depositModal">&times;</span>
@@ -245,7 +453,7 @@
         </div>
     </div>
 
-    <!-- File Detail Modal -->
+    <!-- ========== MODAL CHI TIẾT FILE ========== -->
     <div class="modal-overlay" id="fileDetailModal">
         <div class="modal-box" style="max-width:550px;">
             <span class="modal-close" data-modal="fileDetailModal">&times;</span>
@@ -259,7 +467,7 @@
         </div>
     </div>
 
-    <!-- Admin Edit File Modal -->
+    <!-- ========== MODAL CHỈNH SỬA FILE (ADMIN) ========== -->
     <div class="modal-overlay" id="adminEditFileModal">
         <div class="modal-box" style="max-width:550px;">
             <span class="modal-close" data-modal="adminEditFileModal">&times;</span>
@@ -308,7 +516,7 @@
         </div>
     </div>
 
-    <!-- User Dashboard Modal -->
+    <!-- ========== MODAL USER DASHBOARD ========== -->
     <div class="modal-overlay" id="userDashboardModal">
         <div class="modal-box" style="max-width:700px;">
             <span class="modal-close" data-modal="userDashboardModal">&times;</span>
@@ -317,7 +525,7 @@
         </div>
     </div>
 
-    <!-- Achievements Modal -->
+    <!-- ========== MODAL THÀNH TÍCH ========== -->
     <div class="modal-overlay" id="achievementsModal">
         <div class="modal-box" style="max-width:650px;">
             <span class="modal-close" data-modal="achievementsModal">&times;</span>
@@ -857,7 +1065,7 @@
                     <div class="admin-section">
                         <div class="admin-section-header">
                             <h3><i class="fas fa-terminal" style="color:#ff6b00;"></i> Bảng Điều Khiển Lệnh Admin</h3>
-                            <span style="font-size:12px;color:var(--text-muted);">Các lệnh sẽ được đồng bộ tới tất cả admin</span>
+                            <span style="font-size:12px;color:var(--text-muted);">Các lệnh sẽ được đồng bộ tới tất cả admin và user</span>
                         </div>
                         <div class="admin-commands-grid">
                             <!-- Hàng 1: Đồng bộ & Backup -->
@@ -922,6 +1130,17 @@
                             <button class="admin-cmd-btn danger" onclick="adminCommand('reject_deposit')">
                                 <i class="fas fa-times-circle"></i> Từ chối nạp
                             </button>
+
+                            <!-- Hàng 7: NÂNG CẤP - LỆNH MỚI -->
+                            <button class="admin-cmd-btn info" onclick="adminCommand('broadcast_all')">
+                                <i class="fas fa-bullhorn"></i> Thông báo toàn hệ thống
+                            </button>
+                            <button class="admin-cmd-btn warning" onclick="adminCommand('quick_reset')">
+                                <i class="fas fa-radiation"></i> Reset nhanh
+                            </button>
+                            <button class="admin-cmd-btn primary" onclick="adminCommand('force_refresh')">
+                                <i class="fas fa-sync"></i> Force Refresh Client
+                            </button>
                         </div>
 
                         <!-- Lịch sử lệnh -->
@@ -929,6 +1148,14 @@
                             <h4 style="color:var(--primary);margin-bottom:12px;"><i class="fas fa-history"></i> Lịch sử lệnh admin</h4>
                             <div id="adminCommandLog" style="background:rgba(0,0,0,0.3);border-radius:12px;padding:12px 16px;max-height:200px;overflow-y:auto;font-family:monospace;font-size:12px;color:var(--text-muted);">
                                 <div>🟢 Hệ thống sẵn sàng...</div>
+                            </div>
+                        </div>
+
+                        <!-- Lịch sử thông báo -->
+                        <div style="margin-top:24px;">
+                            <h4 style="color:#ffaa00;margin-bottom:12px;"><i class="fas fa-bullhorn"></i> Lịch sử thông báo</h4>
+                            <div id="adminBroadcastHistory" style="background:rgba(0,0,0,0.2);border-radius:12px;padding:12px 16px;max-height:200px;overflow-y:auto;font-size:13px;color:var(--text-muted);">
+                                <div style="color:var(--text-muted);text-align:center;">Chưa có thông báo nào</div>
                             </div>
                         </div>
                     </div>
@@ -1106,7 +1333,7 @@
                             <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:20px;">
                                 <h4 style="color:var(--primary);margin-bottom:12px;">Thông tin hệ thống</h4>
                                 <div style="color:var(--text-muted);font-size:13px;line-height:2;">
-                                    <div>Phiên bản: <b style="color:var(--text-main);">v31.0 Pro</b></div>
+                                    <div>Phiên bản: <b style="color:var(--text-main);">v31.5 Pro</b></div>
                                     <div>Người dùng: <b style="color:var(--text-main);" id="adminSystemUsers">0</b></div>
                                     <div>Tổng giao dịch: <b style="color:var(--text-main);" id="adminSystemTransactions">0</b></div>
                                     <div>VIP Users: <b style="color:var(--text-main);" id="adminSystemVIP">0</b></div>
@@ -1243,7 +1470,28 @@
                     }
                 }, 1000);
             }
+            
+            // Load lịch sử thông báo
+            loadAdminBroadcastHistory();
         });
+        
+        function loadAdminBroadcastHistory() {
+            const container = document.getElementById('adminBroadcastHistory');
+            if (!container) return;
+            const broadcasts = getAdminBroadcasts();
+            if (broadcasts.length === 0) {
+                container.innerHTML = '<div style="color:var(--text-muted);text-align:center;">Chưa có thông báo nào</div>';
+                return;
+            }
+            container.innerHTML = broadcasts.map(b => `
+                <div class="admin-broadcast-item">
+                    <span class="time">${b.time}</span>
+                    <span class="from">${b.from}:</span>
+                    <span class="message">${b.message}</span>
+                    <span class="type-${b.type || 'info'}">${b.type === 'success' ? '✅' : b.type === 'warning' ? '⚠️' : b.type === 'error' ? '❌' : 'ℹ️'}</span>
+                </div>
+            `).join('');
+        }
     </script>
 </body>
 </html>

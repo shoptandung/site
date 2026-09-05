@@ -1,6 +1,6 @@
 // ============================================================
 //  SHOP TẤN DŨNG FF - ULTIMATE SYNC v31.0 FIX DEPOSIT + DATABASE
-//  TOÀN BỘ CODE JS HOÀN CHỈNH
+//  TOÀN BỘ CODE JS HOÀN CHỈNH + FIX CHECKBOX
 // ============================================================
 
 // ============================================================
@@ -3420,6 +3420,83 @@ function adminLog(message) {
 }
 
 // ============================================================
+//  FIX CHECKBOX ĐỒNG Ý ĐIỀU KHOẢN - CHO PHÉP CHỌN
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    // Force enable checkbox
+    const agreeCheckbox = document.getElementById('agreeTerms');
+    if (agreeCheckbox) {
+        // Xóa tất cả event listener bị chặn
+        const newCheckbox = agreeCheckbox.cloneNode(true);
+        agreeCheckbox.parentNode.replaceChild(newCheckbox, agreeCheckbox);
+        
+        // Thêm event listener mới
+        newCheckbox.addEventListener('change', function(e) {
+            e.stopPropagation();
+            console.log('✅ Checkbox điều khoản đã được chọn:', this.checked);
+        });
+        
+        // Đảm bảo không bị chặn bởi anti-click
+        newCheckbox.addEventListener('click', function(e) {
+            e.stopPropagation();
+            this.checked = !this.checked;
+            // Trigger change event
+            const event = new Event('change', { bubbles: true });
+            this.dispatchEvent(event);
+        });
+    }
+    
+    // Fix cho tất cả checkbox trong form
+    document.querySelectorAll('#registerForm input[type="checkbox"]').forEach(cb => {
+        cb.style.pointerEvents = 'auto';
+        cb.style.cursor = 'pointer';
+        cb.style.opacity = '1';
+        cb.style.position = 'relative';
+        cb.style.zIndex = '9999';
+    });
+    
+    // Fix cho label chứa checkbox
+    document.querySelectorAll('#registerForm .form-options label').forEach(label => {
+        label.style.pointerEvents = 'auto';
+        label.style.cursor = 'pointer';
+        label.style.zIndex = '9999';
+        label.style.position = 'relative';
+    });
+    
+    // Fix thêm cho toàn bộ form đăng ký
+    const registerForm = document.getElementById('registerForm');
+    if (registerForm) {
+        registerForm.style.pointerEvents = 'auto';
+        registerForm.addEventListener('submit', function(e) {
+            const cb = document.getElementById('agreeTerms');
+            if (cb && !cb.checked) {
+                e.preventDefault();
+                showToast('Vui lòng đồng ý điều khoản!', 'fas fa-exclamation-triangle', 'error');
+                return false;
+            }
+        });
+    }
+    
+    // Kiểm tra và fix thêm sau 500ms nếu vẫn chưa được
+    setTimeout(function() {
+        const cb = document.getElementById('agreeTerms');
+        if (cb) {
+            cb.style.pointerEvents = 'auto';
+            cb.style.cursor = 'pointer';
+            cb.style.opacity = '1';
+            cb.style.width = '18px';
+            cb.style.height = '18px';
+            cb.style.accentColor = '#00f0ff';
+            cb.style.appearance = 'checkbox';
+            cb.style.webkitAppearance = 'checkbox';
+            cb.style.position = 'relative';
+            cb.style.zIndex = '9999';
+            cb.style.flexShrink = '0';
+        }
+    }, 500);
+});
+
+// ============================================================
 //  APP STATE
 // ============================================================
 const APP = {
@@ -3878,6 +3955,12 @@ function handleRegisterSubmit(e) {
     const email = document.getElementById('regEmail').value.trim();
     const password = document.getElementById('regPassword').value;
     const confirm = document.getElementById('regConfirmPassword').value;
+    // Kiểm tra checkbox điều khoản
+    const agreeCheckbox = document.getElementById('agreeTerms');
+    if (!agreeCheckbox || !agreeCheckbox.checked) {
+        showToast('Vui lòng đồng ý với điều khoản để đăng ký!', 'fas fa-exclamation-triangle', 'error');
+        return;
+    }
     if (!username || username.length < 3) { showToast('Tên đăng nhập tối thiểu 3 ký tự!', 'fas fa-triangle-exclamation', 'error'); return; }
     if (!email || !email.includes('@')) { showToast('Email không hợp lệ!', 'fas fa-triangle-exclamation', 'error'); return; }
     if (!password || password.length < 6) { showToast('Mật khẩu tối thiểu 6 ký tự!', 'fas fa-triangle-exclamation', 'error'); return; }
@@ -5510,8 +5593,6 @@ setTimeout(function() {
 // ============================================================
 //  EXPOSE GLOBALS
 // ============================================================
-// ... (Tất cả các hàm đã được expose ở cuối file gốc) ...
-// Đảm bảo tất cả hàm quan trọng đều được expose
 window.showToast = showToast;
 window.openModal = openModal;
 window.closeModal = closeModal;
@@ -5654,6 +5735,7 @@ console.log('📁 Files:', FILE_DATA.length);
 console.log('📡 MQTT: Tự động kết nối đến broker.emqx.io');
 console.log('✅ FIX: SYNC HOÀN HẢO - KHÔNG LỖI DUYỆT - CỘNG TIỀN CHÍNH XÁC 100%!');
 console.log('💾 DATABASE: Đã tách riêng với 10 bảng!');
+console.log('✅ FIX CHECKBOX: ĐÃ SỬA LỖI ĐỒNG Ý ĐIỀU KHOẢN!');
 
 // ============================================================
 //  INIT
