@@ -322,9 +322,12 @@ const STORAGE_KEY_ADMIN_TOKEN = 'ff_admin_session_token';
 const BACKUP_KEY = 'ff_backup_data';
 const STORAGE_KEY_PROCESSED_DEPOSITS = 'ff_processed_deposits';
 
-const SYNC_SERVER_URL = window.location.protocol === 'http:' || window.location.protocol === 'https:'
-    ? window.location.origin
-    : '';
+const configuredSyncServerUrl = String(window.SYNC_SERVER_URL || '').trim().replace(/\/$/, '');
+const SYNC_SERVER_URL = configuredSyncServerUrl || (
+    window.location.protocol === 'http:' || window.location.protocol === 'https:'
+        ? window.location.origin
+        : ''
+);
 
 const SPIN_PRIZES = [
     { name: 'File Reg Free', value: 0, icon: '🎯', color: '#00f0ff' },
