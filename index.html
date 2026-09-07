@@ -1349,7 +1349,10 @@
 
     <!-- ===== LOAD SCRIPTS ===== -->
     <!-- Khi frontend va backend o hai host khac nhau, dat URL backend vao dong nay. -->
-    <script>window.SYNC_SERVER_URL = window.SYNC_SERVER_URL || '';</script>
+    <script>
+        // Dat URL backend Node.js cua ban vao day khi frontend va backend khac host.
+        window.SYNC_SERVER_URL = 'https://site-751d.onrender.com';
+    </script>
     <script src="shop-shield.js?v=shield-v1"></script>
     <script src="script.js?v=sync-v4"></script>
     
