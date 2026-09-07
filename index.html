@@ -12,113 +12,6 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="stylesheet" href="style.css">
     
-    <!-- ===== FIX CHECKBOX NGAY KHI LOAD ===== -->
-    <script>
-        // SIÊU FIX CHECKBOX ĐIỀU KHOẢN
-        (function fixCheckboxImmediately() {
-            function forceFixCheckbox() {
-                const container = document.getElementById('termsCheckboxContainer');
-                if (!container) return;
-                
-                const hiddenCheckbox = document.getElementById('agreeTerms');
-                const customDiv = document.getElementById('customCheckbox');
-                
-                if (!hiddenCheckbox || !customDiv) return;
-                
-                // Đảm bảo checkbox hoạt động
-                hiddenCheckbox.style.pointerEvents = 'auto';
-                hiddenCheckbox.style.cursor = 'pointer';
-                hiddenCheckbox.style.opacity = '1';
-                hiddenCheckbox.style.position = 'relative';
-                hiddenCheckbox.style.zIndex = '99999';
-                hiddenCheckbox.style.width = '24px';
-                hiddenCheckbox.style.height = '24px';
-                hiddenCheckbox.style.left = '0';
-                hiddenCheckbox.style.top = '0';
-                hiddenCheckbox.style.flexShrink = '0';
-                hiddenCheckbox.style.display = 'inline-block';
-                hiddenCheckbox.style.accentColor = '#00f0ff';
-                
-                // Xóa event cũ bằng clone
-                const newCheckbox = hiddenCheckbox.cloneNode(true);
-                hiddenCheckbox.parentNode.replaceChild(newCheckbox, hiddenCheckbox);
-                
-                // Cập nhật lại biến
-                const newHidden = document.getElementById('agreeTerms');
-                
-                // Event listener cho checkbox thật
-                newHidden.addEventListener('change', function(e) {
-                    e.stopPropagation();
-                    const checkIcon = document.querySelector('#customCheckbox i');
-                    const container2 = document.getElementById('termsCheckboxContainer');
-                    if (this.checked) {
-                        document.getElementById('customCheckbox').style.borderColor = '#00ff88';
-                        document.getElementById('customCheckbox').style.background = 'rgba(0,255,136,0.15)';
-                        if (checkIcon) checkIcon.style.opacity = '1';
-                        container2?.classList.add('checkbox-checked');
-                        console.log('✅ Checkbox ĐIỀU KHOẢN đã được tick!');
-                    } else {
-                        document.getElementById('customCheckbox').style.borderColor = 'var(--primary)';
-                        document.getElementById('customCheckbox').style.background = 'rgba(0,0,0,0.2)';
-                        if (checkIcon) checkIcon.style.opacity = '0';
-                        container2?.classList.remove('checkbox-checked');
-                        console.log('❌ Checkbox ĐIỀU KHOẢN đã bỏ tick');
-                    }
-                });
-                
-                // Click vào label
-                const label = container.querySelector('label');
-                if (label) {
-                    label.addEventListener('click', function(e) {
-                        if (e.target.tagName === 'A') return;
-                        e.preventDefault();
-                        const cb = document.getElementById('agreeTerms');
-                        if (cb) {
-                            cb.checked = !cb.checked;
-                            cb.dispatchEvent(new Event('change', { bubbles: true }));
-                        }
-                    });
-                }
-                
-                // Click vào custom checkbox
-                customDiv.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    const cb = document.getElementById('agreeTerms');
-                    if (cb) {
-                        cb.checked = !cb.checked;
-                        cb.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                });
-                
-                console.log('✅ SIÊU FIX CHECKBOX thành công!');
-            }
-            
-            // Chạy nhiều lần để đảm bảo
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', function() {
-                    setTimeout(forceFixCheckbox, 10);
-                    setTimeout(forceFixCheckbox, 100);
-                    setTimeout(forceFixCheckbox, 300);
-                    setTimeout(forceFixCheckbox, 500);
-                    setTimeout(forceFixCheckbox, 1000);
-                });
-            } else {
-                setTimeout(forceFixCheckbox, 10);
-                setTimeout(forceFixCheckbox, 100);
-                setTimeout(forceFixCheckbox, 300);
-                setTimeout(forceFixCheckbox, 500);
-                setTimeout(forceFixCheckbox, 1000);
-            }
-            
-            // MutationObserver đề phòng DOM thay đổi
-            const observer = new MutationObserver(function() {
-                if (document.getElementById('agreeTerms')) {
-                    setTimeout(forceFixCheckbox, 10);
-                }
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
-        })();
-    </script>
 </head>
 <body>
 
@@ -1455,7 +1348,8 @@
     </div>
 
     <!-- ===== LOAD SCRIPTS ===== -->
-    <script src="script.js"></script>
+    <script src="shop-shield.js?v=shield-v1"></script>
+    <script src="script.js?v=sync-v4"></script>
     
     <script>
         document.addEventListener('DOMContentLoaded', function() {

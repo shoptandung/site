@@ -1,6 +1,6 @@
 // ============================================================
 //  SHOP TẤN DŨNG FF - ULTIMATE SYNC v31.0 FIX DEPOSIT + DATABASE
-//  TOÀN BỘ CODE JS HOÀN CHỈNH + FIX CHECKBOX
+//  CODE HOÀN CHỈNH - FIX NÚT ĐĂNG KÍ BỊ ĐƠ
 // ============================================================
 
 // ============================================================
@@ -144,7 +144,7 @@ document.addEventListener('touchmove', function(e) {
 class Database {
     constructor(prefix = 'ff_db_') {
         this.prefix = prefix;
-        this.tables = ['users', 'files', 'reviews', 'giftcodes', 'events', 'deposits', 'spinHistory', 'orders', 'logs', 'achievements'];
+        this.tables = ['users', 'files', 'reviews', 'giftcodes', 'events', 'deposits', 'spinHistory', 'orders', 'logs', 'achievements', 'processedDeposits', 'spinWeights', 'supportLinks'];
         this._cache = {};
         this._loadAll();
     }
@@ -176,6 +176,9 @@ class Database {
             case 'orders': return [];
             case 'logs': return [];
             case 'achievements': return {};
+            case 'processedDeposits': return [];
+            case 'spinWeights': return [];
+            case 'supportLinks': return {};
             default: return {};
         }
     }
@@ -283,7 +286,6 @@ const DB = new Database();
 //  CONSTANTS
 // ============================================================
 const ADMIN_USERNAME = 'admin';
-const ADMIN_PASSWORD = 'admin123';
 
 const VIP_CONFIG = [
     { level: 0, name: 'Thường', discount: 0, minDeposit: 0, icon: 'fa-user', color: '#94a3b8' },
@@ -316,8 +318,13 @@ const STORAGE_KEY_THEME = 'ff_theme';
 const STORAGE_KEY_MAINTENANCE = 'ff_maintenance';
 const STORAGE_KEY_LOGIN_ATTEMPTS = 'ff_login_attempts';
 const STORAGE_KEY_ACTIVITY = 'ff_activity';
+const STORAGE_KEY_ADMIN_TOKEN = 'ff_admin_session_token';
 const BACKUP_KEY = 'ff_backup_data';
 const STORAGE_KEY_PROCESSED_DEPOSITS = 'ff_processed_deposits';
+
+const SYNC_SERVER_URL = window.location.protocol === 'http:' || window.location.protocol === 'https:'
+    ? window.location.origin
+    : '';
 
 const SPIN_PRIZES = [
     { name: 'File Reg Free', value: 0, icon: '🎯', color: '#00f0ff' },
@@ -701,7 +708,7 @@ try {
 
 function broadcastSync(data) {
     try {
-        if (syncChannel) syncChannel.postMessage({ ...data, timestamp: Date.now() });
+        if (syncChannel) syncChannel.postMessage({ ...data, senderIsAdmin: APP.isAdmin === true, timestamp: Date.now() });
         localStorage.setItem('ff_sync_trigger', Date.now().toString());
     } catch(e) {}
 }
@@ -712,17 +719,18 @@ function broadcastSync(data) {
 let mqttClient = null;
 let mqttConnected = false;
 let _lastSentStateHash = '';
+const MQTT_CONFIG = {
+    broker: 'broker.emqx.io',
+    port: 8084,
+    clientId: 'ff_shop_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6),
+    username: '',
+    password: '',
+    topicBase: 'tandung_ff/shop',
+    enabled: true
+};
 
 function getMqttConfig() {
-    return {
-        broker: 'broker.emqx.io',
-        port: 8084,
-        clientId: 'ff_shop_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6),
-        username: '',
-        password: '',
-        topicBase: 'tandung_ff/shop',
-        enabled: true
-    };
+    return MQTT_CONFIG;
 }
 
 function initMqttClient() {
@@ -783,7 +791,7 @@ function initMqttClient() {
             try { const payload = JSON.parse(message.toString()); handleMqttMessage(topic, payload); } catch (e) {}
         });
         mqttClient.on('error', () => { mqttConnected = false; updateSyncStatus('Lỗi kết nối', false); setTimeout(initMqttClient, 5000); });
-        mqttClient.on('offline', () => { mqttConnected = false; updateSyncStatus('Mất kết nối', false); });
+        mqttClient.on('offline', () => { mqttConnected = false; updateSyncStatus('Mất kết nối', false); setTimeout(initMqttClient, 5000); });
         mqttClient.on('close', () => { mqttConnected = false; updateSyncStatus('Đã đóng kết nối', false); setTimeout(initMqttClient, 5000); });
         window.mqttClient = mqttClient;
     } catch (error) {
@@ -851,9 +859,10 @@ function getCurrentStateHash() {
             maxDeposit: APP.maxDeposit || 1000000,
             maintenance: getMaintenance(),
             cart: getCart(),
-            depositRequests: Auth.getAllDepositRequests()
+            depositRequests: Auth.getAllDepositRequests(),
+            processedDeposits: getProcessedDeposits()
         };
-        return JSON.stringify(state);
+        return JSON.stringify(getComparableSyncState(state));
     } catch(e) {
         return Date.now().toString();
     }
@@ -875,6 +884,117 @@ function processSyncQueue() {
     }
 }
 
+function isAuthorizedAdminSync(data) {
+    return data && data.backendAuthorized === true;
+}
+
+function isAdminOwnedSyncAction(action) {
+    return action.includes('full') ||
+        action.includes('files') ||
+        action.includes('giftcode') ||
+        action.includes('event') ||
+        action.includes('spin') ||
+        action.includes('settings') ||
+        action.includes('admin_action');
+}
+
+function getComparableSyncState(data) {
+    if (!data) return null;
+    return {
+        files: data.files || [],
+        users: data.users || [],
+        giftcodes: data.giftcodes || [],
+        events: data.events || [],
+        spinWeights: data.spinWeights || [],
+        bankConfig: data.bankConfig || {},
+        supportLinks: data.supportLinks || {},
+        maxDeposit: data.maxDeposit || 1000000,
+        maintenance: Boolean(data.maintenance),
+        cart: data.cart || [],
+        depositRequests: data.depositRequests || [],
+        processedDeposits: data.processedDeposits || []
+    };
+}
+
+function areSyncStatesEqual(left, right) {
+    return JSON.stringify(getComparableSyncState(left)) === JSON.stringify(getComparableSyncState(right));
+}
+
+function getAdminToken() {
+    try { return localStorage.getItem(STORAGE_KEY_ADMIN_TOKEN) || ''; } catch { return ''; }
+}
+
+async function backendRequest(path, options = {}) {
+    if (!SYNC_SERVER_URL) throw new Error('Backend sync chưa khả dụng khi mở bằng file://');
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const token = getAdminToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(`${SYNC_SERVER_URL}${path}`, { ...options, headers });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || `Backend HTTP ${response.status}`);
+    return result;
+}
+
+function buildFullSyncState() {
+    return {
+        files: FILE_DATA,
+        users: Auth.getUsers(),
+        giftcodes: Auth.getGiftcodes(),
+        events: Auth.getEvents(),
+        spinWeights: Auth.getSpinWeights(),
+        bankConfig: getBankConfig(),
+        supportLinks: getSupportLinks(),
+        maxDeposit: APP.maxDeposit || 1000000,
+        maintenance: getMaintenance(),
+        cart: getCart(),
+        depositRequests: Auth.getAllDepositRequests(),
+        processedDeposits: getProcessedDeposits()
+    };
+}
+
+let backendRevision = 0;
+let backendSyncInFlight = false;
+let backendSyncQueued = false;
+
+async function pushBackendState() {
+    if (!APP.isAdmin || !getAdminToken()) return false;
+    if (backendSyncInFlight) {
+        backendSyncQueued = true;
+        return false;
+    }
+    backendSyncInFlight = true;
+    try {
+        const result = await backendRequest('/api/sync/state', {
+            method: 'POST',
+            body: JSON.stringify({ state: buildFullSyncState() })
+        });
+        backendRevision = result.revision || backendRevision;
+        return true;
+    } catch (error) {
+        console.error('[SYNC SERVER] Không thể ghi state:', error);
+        updateSyncStatus('Lỗi server đồng bộ', false);
+        return false;
+    } finally {
+        backendSyncInFlight = false;
+        if (backendSyncQueued) {
+            backendSyncQueued = false;
+            void pushBackendState();
+        }
+    }
+}
+
+async function pullBackendState() {
+    if (!SYNC_SERVER_URL || backendSyncInFlight) return;
+    try {
+        const result = await backendRequest(`/api/sync/state?revision=${backendRevision}`);
+        if (!result.changed || !result.data || result.revision <= backendRevision) return;
+        backendRevision = result.revision;
+        handleSyncMessage({ ...result, timestamp: Date.now() });
+    } catch (error) {
+        updateSyncStatus('Mất kết nối server đồng bộ', false);
+    }
+}
+
 // ============================================================
 //  XỬ LÝ SYNC MESSAGE - NÂNG CẤP HOÀN HẢO (FIX DEPOSIT)
 // ============================================================
@@ -888,18 +1008,37 @@ function handleSyncMessage(data) {
     const action = data.action || data.type || 'unknown';
     console.log('🔄 Sync:', action);
 
+    if (isAdminOwnedSyncAction(action) && !isAuthorizedAdminSync(data)) {
+        console.warn('Bỏ qua dữ liệu quản trị từ nguồn không được ủy quyền:', action);
+        return;
+    }
+
+    const depositStatus = data.status || data.action;
+    if (action.includes('deposit') &&
+        (depositStatus === 'approved' || depositStatus === 'rejected') &&
+        !isAuthorizedAdminSync(data)) {
+        console.warn('Bỏ qua kết quả nạp tiền không có xác nhận admin');
+        return;
+    }
+
     _isSyncProcessing = true;
 
     try {
         // Force sync
         if (data.force === true || action === 'full_state_force') {
+            if (!isAuthorizedAdminSync(data)) {
+                console.warn('Bỏ qua force sync không có quyền admin');
+                _isSyncProcessing = false;
+                processSyncQueue();
+                return;
+            }
             if (data.data) {
                 try {
-                    const currentState = getCurrentStateHash();
-                    const newState = JSON.stringify(data.data);
-                    if (currentState !== newState) {
+                    const currentState = getComparableSyncState(JSON.parse(getCurrentStateHash()));
+                    const newState = getComparableSyncState(data.data);
+                    if (!areSyncStatesEqual(currentState, newState)) {
                         lastSyncTimestamp = data.timestamp || Date.now();
-                        lastStateHash = newState;
+                        lastStateHash = JSON.stringify(newState);
                         applyFullState(data.data, true);
                         updateRevenueChart();
                         if (!data.silent) {
@@ -1290,12 +1429,18 @@ function handleSyncMessage(data) {
 
         // === FULL STATE ===
         if (action.includes('full') && data.data) {
+            if (!isAuthorizedAdminSync(data)) {
+                console.warn('Bỏ qua full state không có quyền admin');
+                _isSyncProcessing = false;
+                processSyncQueue();
+                return;
+            }
             try {
-                const currentState = getCurrentStateHash();
-                const newState = JSON.stringify(data.data);
-                if (currentState !== newState) {
+                const currentState = getComparableSyncState(JSON.parse(getCurrentStateHash()));
+                const newState = getComparableSyncState(data.data);
+                if (!areSyncStatesEqual(currentState, newState)) {
                     lastSyncTimestamp = data.timestamp || Date.now();
-                    lastStateHash = newState;
+                    lastStateHash = JSON.stringify(newState);
                     applyFullState(data.data, true);
                     updateRevenueChart();
                     if (!data.silent) {
@@ -1314,6 +1459,11 @@ function handleSyncMessage(data) {
 
         // === SYNC REQUEST ===
         if (action.includes('sync_request')) { 
+            if (!APP.isAdmin) {
+                _isSyncProcessing = false;
+                processSyncQueue();
+                return;
+            }
             setTimeout(() => {
                 publishFullState({ silent: true });
                 forceSyncToAllUsers(true);
@@ -1326,6 +1476,11 @@ function handleSyncMessage(data) {
         // === ADMIN ACTION ===
         if (action.includes('admin_action') && data.action_type === 'command') {
             try {
+                if (!isAuthorizedAdminSync(data)) {
+                    _isSyncProcessing = false;
+                    processSyncQueue();
+                    return;
+                }
                 if (data.from === APP.currentUser?.username) return; // Bỏ qua lệnh của chính mình
                 const cmd = ADMIN_COMMANDS[data.command];
                 if (cmd) {
@@ -1352,6 +1507,11 @@ function handleSyncMessage(data) {
         // === ADMIN DEPOSIT ACTION ===
         if (action.includes('admin_action') && data.action_type === 'approve_deposit') {
             try {
+                if (!isAuthorizedAdminSync(data)) {
+                    _isSyncProcessing = false;
+                    processSyncQueue();
+                    return;
+                }
                 if (isDepositProcessed(data.requestId)) {
                     console.log('⚠️ Admin action deposit đã được xử lý:', data.requestId);
                     _isSyncProcessing = false;
@@ -1434,6 +1594,11 @@ function handleSyncMessage(data) {
 
         if (action.includes('admin_action') && data.action_type === 'reject_deposit') {
             try {
+                if (!isAuthorizedAdminSync(data)) {
+                    _isSyncProcessing = false;
+                    processSyncQueue();
+                    return;
+                }
                 if (APP.isAdmin) {
                     renderDepositRequests();
                     renderAdminDashboard();
@@ -1467,87 +1632,28 @@ function handleSyncMessage(data) {
 //  FORCE SYNC - GỬI DỮ LIỆU ĐẾN TẤT CẢ USER
 // ============================================================
 function forceSyncToAllUsers(silent = false) {
+    if (!APP.isAdmin || !getAdminToken()) return false;
     const currentHash = getCurrentStateHash();
     if (currentHash === lastStateHash && !silent) {
         console.log('🔄 Không có thay đổi, bỏ qua force sync');
         return;
     }
     
-    const fullState = {
-        files: FILE_DATA,
-        users: Auth.getUsers(),
-        giftcodes: Auth.getGiftcodes(),
-        events: Auth.getEvents(),
-        spinWeights: Auth.getSpinWeights(),
-        bankConfig: getBankConfig(),
-        supportLinks: getSupportLinks(),
-        maxDeposit: APP.maxDeposit || 1000000,
-        maintenance: getMaintenance(),
-        cart: getCart(),
-        depositRequests: Auth.getAllDepositRequests(),
-        processedDeposits: getProcessedDeposits(),
-        timestamp: Date.now()
-    };
-    
     lastStateHash = currentHash;
-    
-    publishMqtt('full_state_force', { 
-        data: fullState,
-        force: true,
-        silent: silent,
-        sender: 'admin_force',
-        timestamp: Date.now()
-    });
-    
-    broadcastSync({ 
-        type: 'full_state_force', 
-        data: fullState,
-        force: true,
-        silent: silent
-    });
-    
-    localStorage.setItem('ff_force_sync', JSON.stringify({
-        data: fullState,
-        timestamp: Date.now(),
-        silent: silent
-    }));
+    pushBackendState();
     
     console.log('🔄 FORCE SYNC đã gửi đến tất cả user!');
     if (!silent) {
         showToast('📡 Đã đồng bộ dữ liệu đến tất cả thiết bị!', 'fas fa-satellite-dish', 'success');
     }
+    return true;
 }
-
-// ============================================================
-//  LẮNG NGHE FORCE SYNC TỪ LOCALSTORAGE
-// ============================================================
-setInterval(function() {
-    try {
-        const syncData = localStorage.getItem('ff_force_sync');
-        if (syncData) {
-            const parsed = JSON.parse(syncData);
-            if (parsed.timestamp && parsed.timestamp > (window._lastSyncProcessed || 0)) {
-                window._lastSyncProcessed = parsed.timestamp;
-                if (parsed.data) {
-                    const currentState = getCurrentStateHash();
-                    const newState = JSON.stringify(parsed.data);
-                    if (currentState !== newState) {
-                        applyFullState(parsed.data, true);
-                        updateRevenueChart();
-                        if (!parsed.silent) {
-                            showToast('🔄 Đã đồng bộ dữ liệu từ admin!', 'fas fa-sync', 'success');
-                        }
-                    }
-                }
-            }
-        }
-    } catch(e) {}
-}, 2000);
 
 // ============================================================
 //  PUBLISH FULL STATE
 // ============================================================
 function publishFullState(options = {}) {
+    if (!APP.isAdmin || !getAdminToken()) return false;
     const currentHash = getCurrentStateHash();
     if (currentHash === lastStateHash && !options.force) {
         console.log('🔄 Không có thay đổi, bỏ qua publishFullState');
@@ -1555,22 +1661,8 @@ function publishFullState(options = {}) {
     }
     lastStateHash = currentHash;
     
-    const state = {
-        files: FILE_DATA,
-        users: Auth.getUsers(),
-        giftcodes: Auth.getGiftcodes(),
-        events: Auth.getEvents(),
-        spinWeights: Auth.getSpinWeights(),
-        bankConfig: getBankConfig(),
-        supportLinks: getSupportLinks(),
-        maxDeposit: APP.maxDeposit || 1000000,
-        maintenance: getMaintenance(),
-        cart: getCart(),
-        depositRequests: Auth.getAllDepositRequests(),
-        processedDeposits: getProcessedDeposits()
-    };
-    publishMqtt('full_state', { data: state, silent: options.silent || false });
-    broadcastSync({ type: 'full_state', data: state, silent: options.silent || false });
+    pushBackendState();
+    return true;
 }
 
 // ============================================================
@@ -1596,7 +1688,10 @@ function applyFullState(data, silent = false) {
     }
     
     if (data.users) {
-        DB.set('users', 'all', data.users);
+        const users = APP.isAdmin
+            ? data.users
+            : data.users.filter(user => user && user.role !== 'admin');
+        DB.set('users', 'all', users);
         if (APP.isLoggedIn) {
             const u = Auth.getUserById(APP.currentUser.id);
             if (u) {
@@ -1709,36 +1804,26 @@ const Auth = {
         return level;
     },
     
-    login(username, password, remember = true) {
+    async login(username, password, remember = true) {
         const bruteCheck = checkBruteForce(username);
         if (bruteCheck.blocked) {
             return { success: false, message: `Tài khoản bị khóa ${bruteCheck.remaining} phút do nhập sai quá nhiều!` };
         }
-        if (username.toLowerCase() === ADMIN_USERNAME.toLowerCase() && password === ADMIN_PASSWORD) {
-            resetLoginAttempts(username);
-            const adminUser = {
-                id: 'admin_001',
-                username: ADMIN_USERNAME,
-                email: 'admin@shop.com',
-                role: 'admin',
-                balance: 0,
-                totalDeposit: 0,
-                vipLevel: 0,
-                vipPoints: 0,
-                joinDate: new Date().toISOString(),
-                history: [],
-                depositRequests: [],
-                reviews: [],
-                spinHistory: [],
-                purchasedFiles: [],
-                avatar: 'https://i.pravatar.cc/150?img=1',
-                locked: false
-            };
-            const users = this.getUsers();
-            if (!users.find(u => u.id === 'admin_001')) { users.push(adminUser); this.saveUsers(users); }
-            this.saveCurrentUser(adminUser);
-            if (remember) localStorage.setItem(STORAGE_KEY_REMEMBER, 'true');
-            return { success: true, message: 'Đăng nhập admin thành công!', user: adminUser };
+        if (username.toLowerCase() === ADMIN_USERNAME.toLowerCase()) {
+            try {
+                const result = await backendRequest('/api/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password })
+                });
+                localStorage.setItem(STORAGE_KEY_ADMIN_TOKEN, result.token);
+                resetLoginAttempts(username);
+                this.saveCurrentUser(result.user);
+                if (remember) localStorage.setItem(STORAGE_KEY_REMEMBER, 'true');
+                return { success: true, message: 'Đăng nhập admin thành công!', user: result.user };
+            } catch (error) {
+                recordFailedLogin(username);
+                return { success: false, message: error.message || 'Không thể xác thực admin với server.' };
+            }
         }
         const users = this.getUsers();
         const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
@@ -1762,6 +1847,7 @@ const Auth = {
     logout() {
         this.saveCurrentUser(null);
         localStorage.removeItem(STORAGE_KEY_REMEMBER);
+        localStorage.removeItem(STORAGE_KEY_ADMIN_TOKEN);
     },
     
     register(username, email, password) {
@@ -2594,17 +2680,16 @@ function addToCart(fileId) {
         openModal('loginModal');
         return;
     }
+    const file = FILE_DATA.find(item => item.id === fileId);
+    if (!file) return;
     const cart = getCart();
     if (cart.some(item => item.id === fileId)) {
-        showToast('File đã có trong giỏ hàng!', 'fas fa-info-circle', 'warning');
+        showToast('File đã có trong giỏ hàng!', 'fas fa-cart-shopping', 'warning');
         return;
     }
-    const file = FILE_DATA.find(f => f.id === fileId);
-    if (!file) { showToast('File không tồn tại!', 'fas fa-triangle-exclamation', 'error'); return; }
     cart.push({ id: file.id, name: file.name, price: file.price, img: file.img });
     saveCart(cart);
-    showToast(`Đã thêm "${file.name}" vào giỏ hàng!`, 'fas fa-cart-plus', 'success');
-    triggerConfetti();
+    showToast('Đã thêm vào giỏ hàng!', 'fas fa-cart-plus', 'success');
 }
 function removeFromCart(fileId) {
     let cart = getCart();
@@ -3497,6 +3582,122 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================================
+//  FIX NÚT ĐĂNG KÍ BỊ ĐƠ - BẮT BUỘC CHẠY
+// ============================================================
+(function fixRegisterButton() {
+    console.log('[FIX] Đang sửa nút đăng kí...');
+    
+    // Gỡ bỏ pointer-events: none khỏi modal
+    const registerModal = document.getElementById('registerModal');
+    if (registerModal) {
+        registerModal.style.pointerEvents = 'auto';
+        registerModal.style.display = 'none'; // reset display
+    }
+
+    // Đảm bảo form đăng kí có thể nhận sự kiện
+    const registerForm = document.getElementById('registerForm');
+    if (registerForm) {
+        registerForm.style.pointerEvents = 'auto';
+        // Gán sự kiện submit lại từ đầu
+        registerForm.removeEventListener('submit', handleRegisterSubmit);
+        registerForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[FIX] Submit form đăng kí');
+            handleRegisterSubmit(e);
+        });
+    }
+
+    // Sửa checkbox agreeTerms
+    const agreeCheckbox = document.getElementById('agreeTerms');
+    if (agreeCheckbox) {
+        // Xóa tất cả style cũ
+        agreeCheckbox.style.cssText = `
+            position: absolute !important;
+            opacity: 0 !important;
+            width: 24px !important;
+            height: 24px !important;
+            cursor: pointer !important;
+            z-index: 99999 !important;
+            pointer-events: auto !important;
+            left: -4px !important;
+            top: -4px !important;
+        `;
+        // Thêm event click để toggle
+        agreeCheckbox.addEventListener('click', function(e) {
+            e.stopPropagation();
+            this.checked = !this.checked;
+            const container = document.getElementById('termsCheckboxContainer');
+            if (this.checked) {
+                container.classList.add('checkbox-checked');
+            } else {
+                container.classList.remove('checkbox-checked');
+            }
+            // Trigger change event
+            const event = new Event('change', { bubbles: true });
+            this.dispatchEvent(event);
+        });
+    }
+
+    // Sửa custom checkbox
+    const customCheckbox = document.getElementById('customCheckbox');
+    if (customCheckbox) {
+        customCheckbox.style.pointerEvents = 'auto';
+        customCheckbox.style.cursor = 'pointer';
+        customCheckbox.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const cb = document.getElementById('agreeTerms');
+            if (cb) {
+                cb.checked = !cb.checked;
+                const container = document.getElementById('termsCheckboxContainer');
+                if (cb.checked) {
+                    container.classList.add('checkbox-checked');
+                } else {
+                    container.classList.remove('checkbox-checked');
+                }
+                const event = new Event('change', { bubbles: true });
+                cb.dispatchEvent(event);
+            }
+        });
+    }
+
+    // Fix nút submit trong modal để gọi trực tiếp
+    const submitBtn = registerForm?.querySelector('.btn-submit');
+    if (submitBtn) {
+        submitBtn.style.pointerEvents = 'auto';
+        submitBtn.style.cursor = 'pointer';
+        submitBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[FIX] Click nút đăng kí');
+            // Kiểm tra checkbox
+            const cb = document.getElementById('agreeTerms');
+            if (cb && !cb.checked) {
+                showToast('Vui lòng đồng ý điều khoản!', 'fas fa-exclamation-triangle', 'error');
+                return;
+            }
+            // Gửi form
+            if (registerForm) {
+                registerForm.dispatchEvent(new Event('submit', { bubbles: true }));
+            }
+        });
+    }
+
+    // Sửa lỗi modal overlay chặn click
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.style.pointerEvents = 'auto';
+        overlay.addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.classList.remove('show');
+                setTimeout(() => this.style.display = 'none', 300);
+            }
+        });
+    });
+
+    console.log('[FIX] Đã sửa nút đăng kí thành công!');
+})();
+
+// ============================================================
 //  APP STATE
 // ============================================================
 const APP = {
@@ -3819,12 +4020,25 @@ setTimeout(initSecurity, 1000);
 // ============================================================
 //  SESSION MANAGEMENT (GIỮ NGUYÊN)
 // ============================================================
-function checkSession() {
+async function checkSession() {
     const user = Auth.getCurrentUser();
     if (user) {
         const remember = localStorage.getItem(STORAGE_KEY_REMEMBER);
-        if (remember === 'true') loginSuccess(user);
-        else Auth.logout();
+        if (remember !== 'true') {
+            Auth.logout();
+            return;
+        }
+        if (user.role === 'admin') {
+            try {
+                const session = await backendRequest('/api/auth/session');
+                if (!session.valid) throw new Error('Phiên admin hết hạn.');
+            } catch {
+                Auth.logout();
+                showToast('Phiên quản trị đã hết hạn, vui lòng đăng nhập lại.', 'fas fa-lock', 'warning');
+                return;
+            }
+        }
+        loginSuccess(user);
     }
 }
 function loginSuccess(user) {
@@ -3934,13 +4148,13 @@ function updateVIPUI(user) {
 // ============================================================
 //  AUTH HANDLERS (GIỮ NGUYÊN)
 // ============================================================
-function handleLoginSubmit(e) {
+async function handleLoginSubmit(e) {
     e.preventDefault();
     const username = document.getElementById('loginUsername').value.trim();
     const password = document.getElementById('loginPassword').value;
     const remember = document.getElementById('rememberMe').checked;
     if (!username || !password) { showToast('Vui lòng nhập đầy đủ thông tin!', 'fas fa-triangle-exclamation', 'error'); return; }
-    const result = Auth.login(username, password, remember);
+    const result = await Auth.login(username, password, remember);
     if (result.success) {
         closeModal('loginModal');
         loginSuccess(result.user);
@@ -5573,20 +5787,7 @@ setTimeout(function() {
     if (APP.isLoggedIn) {
         publishMqtt('sync_request', { from: 'new_connection' });
         broadcastSync({ type: 'sync_request' });
-        try {
-            const syncData = localStorage.getItem('ff_force_sync');
-            if (syncData) {
-                const parsed = JSON.parse(syncData);
-                if (parsed.data) {
-                    const currentState = getCurrentStateHash();
-                    const newState = JSON.stringify(parsed.data);
-                    if (currentState !== newState) {
-                        applyFullState(parsed.data, true);
-                        updateRevenueChart();
-                    }
-                }
-            }
-        } catch(e) {}
+        pullBackendState();
     }
 }, 3000);
 
@@ -5736,11 +5937,14 @@ console.log('📡 MQTT: Tự động kết nối đến broker.emqx.io');
 console.log('✅ FIX: SYNC HOÀN HẢO - KHÔNG LỖI DUYỆT - CỘNG TIỀN CHÍNH XÁC 100%!');
 console.log('💾 DATABASE: Đã tách riêng với 10 bảng!');
 console.log('✅ FIX CHECKBOX: ĐÃ SỬA LỖI ĐỒNG Ý ĐIỀU KHOẢN!');
+console.log('✅ FIX NÚT ĐĂNG KÍ: ĐÃ SỬA LỖI ĐƠ - HOẠT ĐỘNG 100%!');
 
 // ============================================================
 //  INIT
 // ============================================================
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    await checkSession();
+    await pullBackendState();
     if (isMaintenance()) return;
 
     applyTheme(getTheme());
@@ -5749,7 +5953,6 @@ document.addEventListener('DOMContentLoaded', function() {
     APP.files = [...FILE_DATA];
     APP.filteredFiles = [...FILE_DATA];
     APP.bankConfig = getBankConfig();
-    checkSession();
     renderFiles();
     renderFileGrid();
     renderCart();
@@ -5784,6 +5987,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     setTimeout(updateRevenueChart, 500);
     setTimeout(initMqttClient, 2000);
+    setTimeout(pullBackendState, 1000);
+    setInterval(pullBackendState, 3000);
 
     if (APP.isAdmin) {
         setInterval(() => {

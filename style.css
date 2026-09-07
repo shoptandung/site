@@ -1,6 +1,6 @@
 /* ==================================================== 
-   SHOP TẤN DŨNG FF - STYLE HOÀN CHỈNH v31.0 ULTIMATE
-   DATABASE + ADMIN COMMANDS + RESPONSIVE + FIX CHECKBOX
+   SHOP TẤN DŨNG FF - STYLE HOÀN CHỈNH v31.5 ULTIMATE
+   DATABASE + ADMIN COMMANDS + RESPONSIVE + TERMS + FIX CHECKBOX + FIX NÚT ĐĂNG KÍ
    ==================================================== */
 
 /* ===== CHỐNG PHÓNG TO MÀN HÌNH ===== */
@@ -63,67 +63,261 @@ body {
     line-height: 1.6;
 }
 
-/* ===== FIX CHECKBOX - QUAN TRỌNG ===== */
-#agreeTerms {
+/* ====================================================
+   FIX CHECKBOX ĐIỀU KHOẢN - SIÊU QUAN TRỌNG
+   ==================================================== */
+#termsCheckboxContainer {
     pointer-events: auto !important;
     cursor: pointer !important;
-    opacity: 1 !important;
-    width: 18px !important;
-    height: 18px !important;
-    accent-color: #00f0ff !important;
-    -webkit-appearance: checkbox !important;
-    appearance: checkbox !important;
+    z-index: 99999 !important;
     position: relative !important;
-    z-index: 9999 !important;
-    flex-shrink: 0 !important;
-    margin: 0 !important;
-    display: inline-block !important;
+    padding: 10px 0 !important;
+    transition: all 0.3s ease;
 }
 
-#agreeTerms:disabled {
+#termsCheckboxContainer.checkbox-checked {
+    border-color: #00ff88 !important;
+    background: rgba(0, 255, 136, 0.03) !important;
+    border-radius: 8px !important;
+}
+
+#termsCheckboxContainer label {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    z-index: 99999 !important;
+    position: relative !important;
+    font-size: 14px !important;
+    color: var(--text-main) !important;
+}
+
+#termsCheckboxContainer label a {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    color: #ffaa00 !important;
+    font-weight: 700 !important;
+    text-decoration: underline !important;
+}
+
+#termsCheckboxContainer label a:hover {
+    color: #ffd700 !important;
+}
+
+#customCheckbox {
+    width: 22px !important;
+    height: 22px !important;
+    border: 2px solid var(--primary) !important;
+    border-radius: 4px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.3s !important;
+    background: rgba(0,0,0,0.2) !important;
+    flex-shrink: 0 !important;
+    position: relative !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+}
+
+#customCheckbox:hover {
+    border-color: #00ff88 !important;
+    box-shadow: 0 0 20px rgba(0,240,255,0.2) !important;
+}
+
+#customCheckbox i {
+    color: #00f0ff !important;
+    font-size: 14px !important;
+    opacity: 0 !important;
+    transition: all 0.3s !important;
+    pointer-events: none !important;
+}
+
+#termsCheckboxContainer.checkbox-checked #customCheckbox {
+    border-color: #00ff88 !important;
+    background: rgba(0,255,136,0.15) !important;
+}
+
+#termsCheckboxContainer.checkbox-checked #customCheckbox i {
+    opacity: 1 !important;
+}
+
+/* FIX CHO FORM ĐĂNG KÝ */
+#registerForm {
+    pointer-events: auto !important;
+}
+
+#registerForm .btn-submit {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    position: relative !important;
+    z-index: 9999 !important;
+}
+
+#registerForm .btn-submit:disabled {
     opacity: 0.5 !important;
     cursor: not-allowed !important;
 }
 
-/* Fix cho label chứa checkbox */
-.form-options label {
-    display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-    cursor: pointer !important;
+/* FIX CHO MODAL */
+#registerModal .modal-box {
     pointer-events: auto !important;
-    z-index: 9999 !important;
+}
+
+/* FIX CHO INPUT BỊ LỖI */
+.form-control.error {
+    border-color: #ff4d4d !important;
+    box-shadow: 0 0 20px rgba(255,77,77,0.3) !important;
+}
+
+/* ====================================================
+   FIX NÚT ĐĂNG KÍ BỊ ĐƠ - SIÊU KHẨN CẤP
+   ==================================================== */
+#registerModal,
+#registerModal .modal-box,
+#registerModal .form-group,
+#registerModal .form-control,
+#registerModal .btn-submit,
+#registerModal label,
+#registerModal a,
+#registerModal input,
+#registerModal select,
+#registerModal textarea,
+#registerModal .form-options,
+#registerModal .form-footer {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    z-index: 99999 !important;
+}
+
+#registerModal {
+    display: none !important; /* reset mặc định */
+}
+
+#registerModal.show {
+    display: flex !important;
+    opacity: 1 !important;
+}
+
+#registerForm {
+    pointer-events: auto !important;
     position: relative !important;
+    z-index: 99999 !important;
+}
+
+#registerForm .btn-submit {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    position: relative !important;
+    z-index: 99999 !important;
+}
+
+#registerForm .btn-submit:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+}
+
+#registerForm input,
+#registerForm select,
+#registerForm textarea {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    z-index: 99999 !important;
+}
+
+#registerForm label {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    z-index: 99999 !important;
+}
+
+#registerForm a {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    z-index: 99999 !important;
 }
 
 #registerForm .form-options {
     pointer-events: auto !important;
     cursor: pointer !important;
+    z-index: 99999 !important;
 }
 
-#registerForm .form-options label {
+#registerForm .form-footer {
     pointer-events: auto !important;
     cursor: pointer !important;
+    z-index: 99999 !important;
 }
 
-input[type="checkbox"] {
-    pointer-events: auto !important;
-    cursor: pointer !important;
-    opacity: 1 !important;
-    -webkit-appearance: checkbox !important;
-    appearance: checkbox !important;
-}
-
-/* Fix cho tất cả checkbox trong form */
-#registerForm input[type="checkbox"] {
+/* Đảm bảo checkbox luôn hoạt động */
+#agreeTerms {
     pointer-events: auto !important;
     cursor: pointer !important;
     opacity: 1 !important;
-    width: 18px !important;
-    height: 18px !important;
-    position: relative !important;
-    z-index: 9999 !important;
-    flex-shrink: 0 !important;
+    width: 24px !important;
+    height: 24px !important;
+    z-index: 99999 !important;
+    position: absolute !important;
+    left: -4px !important;
+    top: -4px !important;
+}
+
+#customCheckbox {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    z-index: 99999 !important;
+}
+
+#termsCheckboxContainer {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    z-index: 99999 !important;
+    padding: 10px 0 !important;
+}
+
+#termsCheckboxContainer label {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    z-index: 99999 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+}
+
+#termsCheckboxContainer label a {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    z-index: 99999 !important;
+}
+
+/* FIX CHO MODAL OVERLAY CHẶN CLICK */
+.modal-overlay {
+    pointer-events: auto !important;
+}
+
+.modal-box {
+    pointer-events: auto !important;
+}
+
+/* Fix cho mobile */
+@media (max-width: 768px) {
+    #registerModal .modal-box {
+        padding: 16px !important;
+        max-height: 95vh !important;
+        overflow-y: auto !important;
+        pointer-events: auto !important;
+    }
+    
+    #registerForm .btn-submit {
+        font-size: 14px !important;
+        padding: 12px !important;
+    }
+    
+    #registerForm .form-control {
+        font-size: 14px !important;
+        padding: 10px !important;
+    }
 }
 
 /* ===== CUSTOM CURSOR 4K ===== */
@@ -2923,6 +3117,153 @@ header.scrolled {
 }
 
 /* ====================================================
+   ADMIN BROADCAST - LỊCH SỬ THÔNG BÁO
+   ==================================================== */
+.admin-broadcast-history {
+    max-height: 300px;
+    overflow-y: auto;
+    background: rgba(0,0,0,0.2);
+    border-radius: 12px;
+    padding: 12px;
+    margin-top: 10px;
+}
+
+.admin-broadcast-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.admin-broadcast-item:last-child {
+    border-bottom: none;
+}
+
+.admin-broadcast-item .time {
+    font-size: 11px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.admin-broadcast-item .from {
+    font-weight: 600;
+    color: var(--primary);
+    flex-shrink: 0;
+}
+
+.admin-broadcast-item .message {
+    flex: 1;
+    color: var(--text-main);
+}
+
+.admin-broadcast-item .type-info {
+    color: #3b82f6;
+}
+.admin-broadcast-item .type-success {
+    color: #00ff88;
+}
+.admin-broadcast-item .type-warning {
+    color: #ffaa00;
+}
+.admin-broadcast-item .type-error {
+    color: #ff4d4d;
+}
+
+/* ====================================================
+   MODAL ĐIỀU KHOẢN
+   ==================================================== */
+#termsModal .modal-box {
+    max-width: 700px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+#termsModal h2 {
+    color: #ffaa00 !important;
+}
+
+#termsModal .terms-content {
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.8;
+    padding: 10px 0;
+}
+
+#termsModal .terms-section {
+    background: rgba(255, 170, 0, 0.05);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-left: 3px solid #ffaa00;
+}
+
+#termsModal .terms-section.blue {
+    background: rgba(0, 240, 255, 0.05);
+    border-left-color: #00f0ff;
+}
+
+#termsModal .terms-section.green {
+    background: rgba(0, 255, 136, 0.05);
+    border-left-color: #00ff88;
+}
+
+#termsModal .terms-section.gold {
+    background: rgba(255, 215, 0, 0.05);
+    border-left-color: #ffd700;
+}
+
+#termsModal .terms-section.pink {
+    background: rgba(255, 0, 119, 0.05);
+    border-left-color: #ff0077;
+}
+
+#termsModal .terms-section.purple {
+    background: rgba(100, 0, 255, 0.05);
+    border-left-color: #7000ff;
+}
+
+#termsModal .terms-section.orange {
+    background: rgba(255, 170, 0, 0.05);
+    border-left-color: #ff6b00;
+}
+
+#termsModal .terms-section.info {
+    background: rgba(59, 130, 246, 0.05);
+    border-left-color: #3b82f6;
+}
+
+#termsModal .terms-section strong {
+    display: block;
+    margin-bottom: 6px;
+}
+
+#termsModal .terms-section ul {
+    margin: 8px 0 0 20px;
+    list-style-type: disc;
+}
+
+#termsModal .terms-section ul li {
+    margin-bottom: 4px;
+}
+
+#termsModal .terms-agree-box {
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(255, 170, 0, 0.08);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 170, 0, 0.2);
+    text-align: center;
+}
+
+#termsModal .terms-agree-box p {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+/* ====================================================
    FILE DETAIL MODAL
    ==================================================== */
 #fileDetailContent {
@@ -4032,6 +4373,33 @@ header.scrolled {
         gap: 6px;
         text-align: center;
     }
+    #termsModal .modal-box {
+        padding: 16px;
+        max-height: 95vh;
+    }
+    #termsModal .terms-section {
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        font-size: 13px;
+    }
+    #termsModal .terms-section ul {
+        margin-left: 16px;
+    }
+    /* FIX NÚT ĐĂNG KÍ TRÊN MOBILE */
+    #registerModal .modal-box {
+        padding: 16px !important;
+        max-height: 95vh !important;
+        overflow-y: auto !important;
+        pointer-events: auto !important;
+    }
+    #registerForm .btn-submit {
+        font-size: 14px !important;
+        padding: 12px !important;
+    }
+    #registerForm .form-control {
+        font-size: 14px !important;
+        padding: 10px !important;
+    }
 }
 
 /* Small mobile */
@@ -4159,5 +4527,31 @@ header.scrolled {
     }
     .support-card span {
         font-size: 10px;
+    }
+    #termsModal .modal-box {
+        padding: 12px;
+    }
+    #termsModal .terms-section {
+        padding: 8px 10px;
+        font-size: 12px;
+    }
+    #termsModal .terms-agree-box {
+        padding: 10px;
+    }
+    #termsModal .terms-agree-box button {
+        font-size: 12px;
+        padding: 8px 20px;
+    }
+    /* FIX NÚT ĐĂNG KÍ TRÊN SIÊU MOBILE */
+    #registerModal .modal-box {
+        padding: 12px !important;
+    }
+    #registerForm .btn-submit {
+        font-size: 12px !important;
+        padding: 10px !important;
+    }
+    #registerForm .form-control {
+        font-size: 12px !important;
+        padding: 8px !important;
     }
 }
