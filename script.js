@@ -211,6 +211,11 @@ class Database {
         if (!this.tables.includes(table)) return false;
         let data = this._cache[table] || this._getDefault(table);
         if (Array.isArray(data)) {
+            if (key === 'all' && Array.isArray(value)) {
+                this._cache[table] = value;
+                this._save(table);
+                return true;
+            }
             const idx = data.findIndex(item => item.id === key);
             if (idx !== -1) {
                 data[idx] = { ...data[idx], ...value };
@@ -321,6 +326,16 @@ const STORAGE_KEY_ACTIVITY = 'ff_activity';
 const STORAGE_KEY_ADMIN_TOKEN = 'ff_admin_session_token';
 const BACKUP_KEY = 'ff_backup_data';
 const STORAGE_KEY_PROCESSED_DEPOSITS = 'ff_processed_deposits';
+const STORAGE_KEY_ADMIN_BROADCASTS = 'ff_admin_broadcasts';
+
+function getAdminBroadcasts() {
+    try {
+        const broadcasts = JSON.parse(localStorage.getItem(STORAGE_KEY_ADMIN_BROADCASTS) || '[]');
+        return Array.isArray(broadcasts) ? broadcasts : [];
+    } catch {
+        return [];
+    }
+}
 
 const configuredSyncServerUrl = String(window.SYNC_SERVER_URL || '').trim().replace(/\/$/, '');
 const SYNC_SERVER_URL = configuredSyncServerUrl || (
@@ -932,9 +947,20 @@ async function backendRequest(path, options = {}) {
     const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
     const token = getAdminToken();
     if (token) headers.Authorization = `Bearer ${token}`;
-    const response = await fetch(`${SYNC_SERVER_URL}${path}`, { ...options, headers });
+    let response;
+    try {
+        response = await fetch(`${SYNC_SERVER_URL}${path}`, { ...options, headers });
+    } catch (error) {
+        console.error('[SYNC SERVER] Không thể kết nối backend:', error);
+        throw new Error('Không thể kết nối máy chủ. Vui lòng kiểm tra backend hoặc thử lại sau.');
+    }
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.message || `Backend HTTP ${response.status}`);
+    if (!response.ok) {
+        if (response.status === 405) {
+            throw new Error('Host frontend không hỗ trợ API POST. Hãy đặt window.SYNC_SERVER_URL trỏ tới backend Node.js.');
+        }
+        throw new Error(result.message || `Backend HTTP ${response.status}`);
+    }
     return result;
 }
 
@@ -1775,7 +1801,24 @@ function applyFullState(data, silent = false) {
 // ============================================================
 const Auth = {
     getUsers() {
-        return DB.getAll('users') || [];
+        const records = DB.getAll('users');
+        if (!Array.isArray(records)) return [];
+        const users = [];
+        const seen = new Set();
+        const addUser = (user) => {
+            if (!user || typeof user !== 'object' || typeof user.username !== 'string') return;
+            const key = String(user.id || user.username).toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            users.push(user);
+        };
+        records.forEach(record => {
+            addUser(record);
+            Object.keys(record || {})
+                .filter(key => /^\d+$/.test(key))
+                .forEach(key => addUser(record[key]));
+        });
+        return users;
     },
     saveUsers(users) {
         DB.set('users', 'all', users);
@@ -1853,9 +1896,50 @@ const Auth = {
         localStorage.removeItem(STORAGE_KEY_ADMIN_TOKEN);
     },
     
-    register(username, email, password) {
+    async register(username, email, password) {
         if (username.toLowerCase() === ADMIN_USERNAME.toLowerCase()) {
             return { success: false, message: 'Tên đăng nhập không được sử dụng!' };
+        }
+        if (SYNC_SERVER_URL) {
+            try {
+                const result = await backendRequest('/api/auth/register', {
+                    method: 'POST',
+                    body: JSON.stringify({ username, email, password })
+                });
+                const users = this.getUsers().filter(user => user.username.toLowerCase() !== username.toLowerCase() && user.email.toLowerCase() !== email.toLowerCase());
+                users.push({ ...result.user, password });
+                DB.set('users', 'all', users);
+                return result;
+            } catch (error) {
+                if (error.message?.includes('Backend HTTP 404')) {
+                    console.warn('[AUTH] Backend chưa hỗ trợ đăng ký, chuyển sang lưu local.');
+                    const users = this.getUsers();
+                    if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
+                        return { success: false, message: 'Tên đăng nhập đã tồn tại!' };
+                    }
+                    if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
+                        return { success: false, message: 'Email đã được sử dụng!' };
+                    }
+                    users.push({
+                        id: 'user_' + Date.now().toString(36),
+                        username,
+                        email,
+                        password,
+                        role: 'user',
+                        balance: 0,
+                        totalDeposit: 0,
+                        vipLevel: 0,
+                        vipPoints: 0,
+                        history: [],
+                        depositRequests: [],
+                        purchasedFiles: [],
+                        joinDate: new Date().toISOString()
+                    });
+                    this.saveUsers(users);
+                    return { success: true, message: 'Đăng ký thành công!', user: users[users.length - 1] };
+                }
+                return { success: false, message: error.message || 'Không thể đăng ký với server.' };
+            }
         }
         const users = this.getUsers();
         if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
@@ -3508,199 +3592,6 @@ function adminLog(message) {
 }
 
 // ============================================================
-//  FIX CHECKBOX ĐỒNG Ý ĐIỀU KHOẢN - CHO PHÉP CHỌN
-// ============================================================
-document.addEventListener('DOMContentLoaded', function() {
-    // Force enable checkbox
-    const agreeCheckbox = document.getElementById('agreeTerms');
-    if (agreeCheckbox) {
-        // Xóa tất cả event listener bị chặn
-        const newCheckbox = agreeCheckbox.cloneNode(true);
-        agreeCheckbox.parentNode.replaceChild(newCheckbox, agreeCheckbox);
-        
-        // Thêm event listener mới
-        newCheckbox.addEventListener('change', function(e) {
-            e.stopPropagation();
-            console.log('✅ Checkbox điều khoản đã được chọn:', this.checked);
-        });
-        
-        // Đảm bảo không bị chặn bởi anti-click
-        newCheckbox.addEventListener('click', function(e) {
-            e.stopPropagation();
-            this.checked = !this.checked;
-            // Trigger change event
-            const event = new Event('change', { bubbles: true });
-            this.dispatchEvent(event);
-        });
-    }
-    
-    // Fix cho tất cả checkbox trong form
-    document.querySelectorAll('#registerForm input[type="checkbox"]').forEach(cb => {
-        cb.style.pointerEvents = 'auto';
-        cb.style.cursor = 'pointer';
-        cb.style.opacity = '1';
-        cb.style.position = 'relative';
-        cb.style.zIndex = '9999';
-    });
-    
-    // Fix cho label chứa checkbox
-    document.querySelectorAll('#registerForm .form-options label').forEach(label => {
-        label.style.pointerEvents = 'auto';
-        label.style.cursor = 'pointer';
-        label.style.zIndex = '9999';
-        label.style.position = 'relative';
-    });
-    
-    // Fix thêm cho toàn bộ form đăng ký
-    const registerForm = document.getElementById('registerForm');
-    if (registerForm) {
-        registerForm.style.pointerEvents = 'auto';
-        registerForm.addEventListener('submit', function(e) {
-            const cb = document.getElementById('agreeTerms');
-            if (cb && !cb.checked) {
-                e.preventDefault();
-                showToast('Vui lòng đồng ý điều khoản!', 'fas fa-exclamation-triangle', 'error');
-                return false;
-            }
-        });
-    }
-    
-    // Kiểm tra và fix thêm sau 500ms nếu vẫn chưa được
-    setTimeout(function() {
-        const cb = document.getElementById('agreeTerms');
-        if (cb) {
-            cb.style.pointerEvents = 'auto';
-            cb.style.cursor = 'pointer';
-            cb.style.opacity = '1';
-            cb.style.width = '18px';
-            cb.style.height = '18px';
-            cb.style.accentColor = '#00f0ff';
-            cb.style.appearance = 'checkbox';
-            cb.style.webkitAppearance = 'checkbox';
-            cb.style.position = 'relative';
-            cb.style.zIndex = '9999';
-            cb.style.flexShrink = '0';
-        }
-    }, 500);
-});
-
-// ============================================================
-//  FIX NÚT ĐĂNG KÍ BỊ ĐƠ - BẮT BUỘC CHẠY
-// ============================================================
-(function fixRegisterButton() {
-    console.log('[FIX] Đang sửa nút đăng kí...');
-    
-    // Gỡ bỏ pointer-events: none khỏi modal
-    const registerModal = document.getElementById('registerModal');
-    if (registerModal) {
-        registerModal.style.pointerEvents = 'auto';
-        registerModal.style.display = 'none'; // reset display
-    }
-
-    // Đảm bảo form đăng kí có thể nhận sự kiện
-    const registerForm = document.getElementById('registerForm');
-    if (registerForm) {
-        registerForm.style.pointerEvents = 'auto';
-        // Gán sự kiện submit lại từ đầu
-        registerForm.removeEventListener('submit', handleRegisterSubmit);
-        registerForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('[FIX] Submit form đăng kí');
-            handleRegisterSubmit(e);
-        });
-    }
-
-    // Sửa checkbox agreeTerms
-    const agreeCheckbox = document.getElementById('agreeTerms');
-    if (agreeCheckbox) {
-        // Xóa tất cả style cũ
-        agreeCheckbox.style.cssText = `
-            position: absolute !important;
-            opacity: 0 !important;
-            width: 24px !important;
-            height: 24px !important;
-            cursor: pointer !important;
-            z-index: 99999 !important;
-            pointer-events: auto !important;
-            left: -4px !important;
-            top: -4px !important;
-        `;
-        // Thêm event click để toggle
-        agreeCheckbox.addEventListener('click', function(e) {
-            e.stopPropagation();
-            this.checked = !this.checked;
-            const container = document.getElementById('termsCheckboxContainer');
-            if (this.checked) {
-                container.classList.add('checkbox-checked');
-            } else {
-                container.classList.remove('checkbox-checked');
-            }
-            // Trigger change event
-            const event = new Event('change', { bubbles: true });
-            this.dispatchEvent(event);
-        });
-    }
-
-    // Sửa custom checkbox
-    const customCheckbox = document.getElementById('customCheckbox');
-    if (customCheckbox) {
-        customCheckbox.style.pointerEvents = 'auto';
-        customCheckbox.style.cursor = 'pointer';
-        customCheckbox.addEventListener('click', function(e) {
-            e.stopPropagation();
-            const cb = document.getElementById('agreeTerms');
-            if (cb) {
-                cb.checked = !cb.checked;
-                const container = document.getElementById('termsCheckboxContainer');
-                if (cb.checked) {
-                    container.classList.add('checkbox-checked');
-                } else {
-                    container.classList.remove('checkbox-checked');
-                }
-                const event = new Event('change', { bubbles: true });
-                cb.dispatchEvent(event);
-            }
-        });
-    }
-
-    // Fix nút submit trong modal để gọi trực tiếp
-    const submitBtn = registerForm?.querySelector('.btn-submit');
-    if (submitBtn) {
-        submitBtn.style.pointerEvents = 'auto';
-        submitBtn.style.cursor = 'pointer';
-        submitBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('[FIX] Click nút đăng kí');
-            // Kiểm tra checkbox
-            const cb = document.getElementById('agreeTerms');
-            if (cb && !cb.checked) {
-                showToast('Vui lòng đồng ý điều khoản!', 'fas fa-exclamation-triangle', 'error');
-                return;
-            }
-            // Gửi form
-            if (registerForm) {
-                registerForm.dispatchEvent(new Event('submit', { bubbles: true }));
-            }
-        });
-    }
-
-    // Sửa lỗi modal overlay chặn click
-    document.querySelectorAll('.modal-overlay').forEach(overlay => {
-        overlay.style.pointerEvents = 'auto';
-        overlay.addEventListener('click', function(e) {
-            if (e.target === this) {
-                this.classList.remove('show');
-                setTimeout(() => this.style.display = 'none', 300);
-            }
-        });
-    });
-
-    console.log('[FIX] Đã sửa nút đăng kí thành công!');
-})();
-
-// ============================================================
 //  APP STATE
 // ============================================================
 const APP = {
@@ -4151,6 +4042,8 @@ function updateVIPUI(user) {
 // ============================================================
 //  AUTH HANDLERS (GIỮ NGUYÊN)
 // ============================================================
+let registerInFlight = false;
+
 async function handleLoginSubmit(e) {
     e.preventDefault();
     const username = document.getElementById('loginUsername').value.trim();
@@ -4166,8 +4059,9 @@ async function handleLoginSubmit(e) {
         document.getElementById('loginForm').reset();
     } else showToast(result.message, 'fas fa-triangle-exclamation', 'error');
 }
-function handleRegisterSubmit(e) {
+async function handleRegisterSubmit(e) {
     e.preventDefault();
+    if (registerInFlight) return;
     const username = document.getElementById('regUsername').value.trim();
     const email = document.getElementById('regEmail').value.trim();
     const password = document.getElementById('regPassword').value;
@@ -4182,15 +4076,26 @@ function handleRegisterSubmit(e) {
     if (!email || !email.includes('@')) { showToast('Email không hợp lệ!', 'fas fa-triangle-exclamation', 'error'); return; }
     if (!password || password.length < 6) { showToast('Mật khẩu tối thiểu 6 ký tự!', 'fas fa-triangle-exclamation', 'error'); return; }
     if (password !== confirm) { showToast('Mật khẩu xác nhận không khớp!', 'fas fa-triangle-exclamation', 'error'); return; }
-    const result = Auth.register(username, email, password);
-    if (result.success) {
-        showToast('Đăng ký thành công! Vui lòng đăng nhập.', 'fas fa-circle-check', 'success');
-        triggerConfetti();
-        closeModal('registerModal');
-        document.getElementById('loginUsername').value = username;
-        document.getElementById('loginPassword').value = password;
-        setTimeout(() => openModal('loginModal'), 400);
-    } else showToast(result.message, 'fas fa-triangle-exclamation', 'error');
+    const submitButton = e.currentTarget?.querySelector('button[type="submit"]') || document.querySelector('#registerForm button[type="submit"]');
+    registerInFlight = true;
+    if (submitButton) submitButton.disabled = true;
+    try {
+        const result = await Auth.register(username, email, password);
+        if (result.success) {
+            showToast('Đăng ký thành công! Vui lòng đăng nhập.', 'fas fa-circle-check', 'success');
+            triggerConfetti();
+            closeModal('registerModal');
+            document.getElementById('loginUsername').value = username;
+            document.getElementById('loginPassword').value = password;
+            setTimeout(() => openModal('loginModal'), 400);
+        } else showToast(result.message || 'Không thể đăng ký tài khoản.', 'fas fa-triangle-exclamation', 'error');
+    } catch (error) {
+        console.error('[AUTH] Lỗi đăng ký:', error);
+        showToast(error.message || 'Không thể đăng ký tài khoản.', 'fas fa-triangle-exclamation', 'error');
+    } finally {
+        registerInFlight = false;
+        if (submitButton) submitButton.disabled = false;
+    }
 }
 function handleLogout() {
     Auth.logout();

@@ -97,23 +97,14 @@
                         <i class="fas fa-eye toggle-password" onclick="togglePassword('regConfirmPassword', this)"></i>
                     </div>
                 </div>
-                <!-- ===== CHECKBOX ĐIỀU KHOẢN - SIÊU FIX ===== -->
-                <div class="form-options" id="termsCheckboxContainer" style="pointer-events:auto !important;cursor:pointer !important;z-index:99999 !important;position:relative !important;padding:10px 0;">
-                    <label style="pointer-events:auto !important;cursor:pointer !important;display:flex !important;align-items:center !important;gap:12px !important;z-index:99999 !important;position:relative !important;font-size:14px !important;color:var(--text-main) !important;">
-                        <div style="position:relative;display:inline-block;flex-shrink:0;">
-                            <input type="checkbox" id="agreeTerms" required style="position:absolute;opacity:0;width:24px;height:24px;cursor:pointer;z-index:99999;pointer-events:auto !important;left:-4px;top:-4px;">
-                            <div id="customCheckbox" style="width:22px;height:22px;border:2px solid var(--primary);border-radius:4px;display:flex;align-items:center;justify-content:center;transition:all 0.3s;background:rgba(0,0,0,0.2);cursor:pointer;">
-                                <i class="fas fa-check" style="color:#00f0ff;font-size:14px;opacity:0;transition:all 0.3s;"></i>
-                            </div>
-                        </div>
-                        <span style="cursor:pointer;">Tôi đã đọc và đồng ý với 
-                            <a href="#" onclick="event.preventDefault(); openModal('termsModal');" style="color:#ffaa00;font-weight:700;text-decoration:underline;pointer-events:auto !important;cursor:pointer !important;">
-                                Điều Khoản Sử Dụng
-                            </a>
+                <div class="form-options terms-option">
+                    <label for="agreeTerms">
+                        <input type="checkbox" id="agreeTerms" required>
+                        <span>Tôi đã đọc và đồng ý với
+                            <a href="#" onclick="event.preventDefault(); openModal('termsModal');">Điều Khoản Sử Dụng</a>
                         </span>
                     </label>
                 </div>
-                <!-- ===== END FIX ===== -->
                 <button type="submit" class="btn-submit">Đăng Ký</button>
                 <div class="form-footer">
                     <span>Đã có tài khoản? <a href="#" onclick="event.preventDefault(); closeModal('registerModal'); openModal('loginModal');">Đăng nhập</a></span>
@@ -1351,7 +1342,8 @@
     <!-- Khi frontend va backend o hai host khac nhau, dat URL backend vao dong nay. -->
     <script>
         // Dat URL backend Node.js cua ban vao day khi frontend va backend khac host.
-        window.SYNC_SERVER_URL = 'https://site-751d.onrender.com';
+        const isLocalShop = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+        window.SYNC_SERVER_URL = isLocalShop ? window.location.origin : 'https://site-1-7ohy.onrender.com';
     </script>
     <script src="shop-shield.js?v=shield-v1"></script>
     <script src="script.js?v=sync-v4"></script>
