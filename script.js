@@ -324,6 +324,7 @@ const STORAGE_KEY_MAINTENANCE = 'ff_maintenance';
 const STORAGE_KEY_LOGIN_ATTEMPTS = 'ff_login_attempts';
 const STORAGE_KEY_ACTIVITY = 'ff_activity';
 const STORAGE_KEY_ADMIN_TOKEN = 'ff_admin_session_token';
+const STORAGE_KEY_USER_TOKEN = 'ff_user_session_token';
 const BACKUP_KEY = 'ff_backup_data';
 const STORAGE_KEY_PROCESSED_DEPOSITS = 'ff_processed_deposits';
 const STORAGE_KEY_ADMIN_BROADCASTS = 'ff_admin_broadcasts';
@@ -942,11 +943,25 @@ function getAdminToken() {
     try { return localStorage.getItem(STORAGE_KEY_ADMIN_TOKEN) || ''; } catch { return ''; }
 }
 
+function getAuthToken() {
+    try { return localStorage.getItem(STORAGE_KEY_ADMIN_TOKEN) || localStorage.getItem(STORAGE_KEY_USER_TOKEN) || ''; } catch { return ''; }
+}
+
+let userSyncTimer = null;
+function queueUserStateSync() {
+    if (!SYNC_SERVER_URL || APP.isAdmin || _isSyncProcessing || !getAuthToken()) return;
+    clearTimeout(userSyncTimer);
+    userSyncTimer = setTimeout(() => {
+        const user = Auth.getCurrentUser();
+        if (user) void backendRequest('/api/sync/user-state', { method: 'POST', body: JSON.stringify({ user }) }).catch(() => {});
+    }, 250);
+}
+
 async function backendRequest(path, options = {}) {
     if (!SYNC_SERVER_URL) throw new Error('Backend sync chưa khả dụng khi mở bằng file://');
     const headers = { ...(options.headers || {}) };
     if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
-    const token = getAdminToken();
+    const token = getAuthToken();
     if (token) headers.Authorization = `Bearer ${token}`;
     let response = null;
     let lastError = null;
@@ -1849,6 +1864,7 @@ const Auth = {
             broadcastSync({ type: 'user_sync', action: 'update_all', users: users });
             forceSyncToAllUsers(true);
         }
+        queueUserStateSync();
     },
     getCurrentUser() {
         try { return JSON.parse(localStorage.getItem(STORAGE_KEY_CURRENT_USER)) || null; } catch { return null; }
@@ -1899,6 +1915,7 @@ const Auth = {
                     body: JSON.stringify({ username, password })
                 });
                 resetLoginAttempts(username);
+                localStorage.setItem(STORAGE_KEY_USER_TOKEN, result.token);
                 this.saveCurrentUser(result.user);
                 if (remember) localStorage.setItem(STORAGE_KEY_REMEMBER, 'true');
                 return { success: true, message: 'Đăng nhập thành công!', user: result.user };
@@ -1930,6 +1947,7 @@ const Auth = {
         this.saveCurrentUser(null);
         localStorage.removeItem(STORAGE_KEY_REMEMBER);
         localStorage.removeItem(STORAGE_KEY_ADMIN_TOKEN);
+        localStorage.removeItem(STORAGE_KEY_USER_TOKEN);
     },
     
     async register(username, email, password) {
@@ -2023,6 +2041,11 @@ const Auth = {
         if (!user) return null;
         user.purchasedFiles = user.purchasedFiles || [];
         user.purchasedFiles.push({ fileId: fileId, fileName: fileName, purchasedAt: new Date().toISOString() });
+        const purchase = user.history?.find(entry => String(entry.desc || '').startsWith('Mua'));
+        if (purchase) {
+            purchase.purchaseFileIds = Array.isArray(purchase.purchaseFileIds) ? purchase.purchaseFileIds : [];
+            if (!purchase.purchaseFileIds.includes(fileId)) purchase.purchaseFileIds.push(fileId);
+        }
         this.saveUsers(users);
         const current = this.getCurrentUser();
         if (current && current.id === userId) {
@@ -5118,11 +5141,20 @@ function renderHistory() {
     if (history.length === 0) { tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:30px;">Chưa có giao dịch nào</td></tr>`; return; }
     tbody.innerHTML = history.map(h => {
         const isPurchase = h.desc.startsWith('Mua') || h.desc.includes('Mua ngay');
-        let fileId = null;
+        let fileIds = Array.isArray(h.purchaseFileIds) ? h.purchaseFileIds : [];
+        let fileId = fileIds[0] || null;
         if (isPurchase) { for (const f of FILE_DATA) { if (h.desc.includes(f.name)) { fileId = f.id; break; } } }
         const hasFile = fileId !== null;
         const isPurchased = hasFile && Auth.hasPurchasedFile(APP.currentUser.id, fileId);
-        return `<tr><td>${h.id}</td><td>${h.desc}</td><td style="color: ${h.amount && h.amount.startsWith('+') ? '#00ff88' : '#ff4d4d'};">${h.amount}</td><td><span class="status-${h.status === 'Thành công' || h.status === 'Hoàn tất' ? 'success' : 'pending'}">${h.status}</span></td><td>${h.time}</td><td>${isPurchase && isPurchased ? `<button class="btn-view-detail" onclick="showFileDetail(${fileId})" style="background:rgba(0,240,255,0.12);border:none;padding:4px 12px;border-radius:6px;color:var(--primary);cursor:pointer;"><i class="fas fa-eye"></i> Xem file</button>` : `<span style="color:var(--text-muted);font-size:12px;">-</span>`}</td></tr>`;
+        const purchaseButtons = isPurchase
+            ? (fileIds.length ? fileIds : (fileId !== null ? [fileId] : [])).map(id => {
+                const purchasedFile = FILE_DATA.find(file => file.id === id);
+                return purchasedFile && Auth.hasPurchasedFile(APP.currentUser.id, id)
+                    ? `<button class="btn-view-detail" onclick="showFileDetail(${id})" style="background:rgba(0,240,255,0.12);border:none;padding:4px 12px;border-radius:6px;color:var(--primary);cursor:pointer;"><i class="fas fa-eye"></i> ${purchasedFile.name}</button>`
+                    : '';
+            }).join('')
+            : '';
+        return `<tr><td>${h.id}</td><td>${h.desc}</td><td style="color: ${h.amount && h.amount.startsWith('+') ? '#00ff88' : '#ff4d4d'};">${h.amount}</td><td><span class="status-${h.status === 'Thành công' || h.status === 'Hoàn tất' ? 'success' : 'pending'}">${h.status}</span></td><td>${h.time}</td><td>${purchaseButtons || '<span style="color:var(--text-muted);font-size:12px;">-</span>'}</td></tr>`;
     }).join('');
 }
 

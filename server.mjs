@@ -266,6 +266,22 @@ const requestHandler = async (req, res) => {
             return json(res, 200, { success: true, token: createUserSession(user.id), user: publicUser });
         }
 
+        if (url.pathname === '/api/sync/user-state' && req.method === 'POST') {
+            const session = getSession(req);
+            if (!session || session.role !== 'user') return json(res, 401, { success: false, message: 'Phiên người dùng không hợp lệ.' });
+            const body = await readBody(req);
+            if (!body.user || typeof body.user !== 'object') return json(res, 400, { success: false, message: 'Dữ liệu người dùng không hợp lệ.' });
+            const users = Array.isArray(state.users) ? state.users : [];
+            const index = users.findIndex(user => user.id === session.userId);
+            if (index === -1) return json(res, 404, { success: false, message: 'Không tìm thấy tài khoản.' });
+            const current = users[index];
+            const { password: ignoredPassword, role: ignoredRole, id: ignoredId, ...safeUser } = body.user;
+            users[index] = { ...current, ...safeUser, id: current.id, role: 'user', password: current.password };
+            await persistState({ ...state, users });
+            const { password: _, ...publicUser } = users[index];
+            return json(res, 200, { success: true, revision, user: publicUser });
+        }
+
         if (url.pathname === '/api/auth/register' && req.method === 'POST') {
             const body = await readBody(req);
             const username = String(body.username || '').trim();
