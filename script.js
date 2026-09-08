@@ -944,7 +944,10 @@ function getAdminToken() {
 }
 
 function getAuthToken() {
-    try { return localStorage.getItem(STORAGE_KEY_ADMIN_TOKEN) || localStorage.getItem(STORAGE_KEY_USER_TOKEN) || ''; } catch { return ''; }
+    try {
+        const preferredKey = APP?.isAdmin ? STORAGE_KEY_ADMIN_TOKEN : STORAGE_KEY_USER_TOKEN;
+        return localStorage.getItem(preferredKey) || localStorage.getItem(preferredKey === STORAGE_KEY_ADMIN_TOKEN ? STORAGE_KEY_USER_TOKEN : STORAGE_KEY_ADMIN_TOKEN) || '';
+    } catch { return ''; }
 }
 
 let userSyncTimer = null;
@@ -1753,22 +1756,36 @@ function applyFullState(data, silent = false) {
     }
     
     if (data.users) {
-        const users = APP.isAdmin
+        const localUsers = Auth.getUsers();
+        const localPasswords = new Map(localUsers.map(user => [user.id, user.password]).filter(([, password]) => password));
+        const users = (APP.isAdmin
             ? data.users
-            : data.users.filter(user => user && user.role !== 'admin');
+            : data.users.filter(user => user && user.role !== 'admin'))
+            .map(user => localPasswords.has(user.id) && !user.password
+                ? { ...user, password: localPasswords.get(user.id) }
+                : user);
         DB.set('users', 'all', users);
         if (APP.isLoggedIn) {
             const u = Auth.getUserById(APP.currentUser.id);
             if (u) {
+                const { password: ignoredPassword, ...sessionUser } = u;
+                APP.currentUser = { ...APP.currentUser, ...sessionUser };
+                Auth.saveCurrentUser(APP.currentUser);
                 APP.balance = u.balance || 0;
                 APP.history = u.history || [];
                 APP.totalDeposit = u.totalDeposit || 0;
                 APP.vipLevel = u.vipLevel || 0;
                 APP.vipPoints = u.vipPoints || 0;
+                APP.purchasedFiles = u.purchasedFiles || [];
                 if (DOM.userBalance) DOM.userBalance.textContent = APP.balance.toLocaleString();
                 if (DOM.profileBalance) DOM.profileBalance.textContent = APP.balance.toLocaleString() + 'đ';
+                if (DOM.userDisplayName) DOM.userDisplayName.textContent = u.username;
+                if (DOM.profileUsername) DOM.profileUsername.textContent = u.username;
+                if (DOM.profileEmail) DOM.profileEmail.textContent = u.email || 'Chưa cập nhật';
+                if (DOM.profileAvatar && u.avatar) DOM.profileAvatar.src = u.avatar;
                 renderHistory();
                 updateVIPUI(u);
+                renderAchievements();
             }
         }
         if (APP.isAdmin) {
@@ -1899,6 +1916,7 @@ const Auth = {
                     body: JSON.stringify({ username, password })
                 });
                 localStorage.setItem(STORAGE_KEY_ADMIN_TOKEN, result.token);
+                localStorage.removeItem(STORAGE_KEY_USER_TOKEN);
                 resetLoginAttempts(username);
                 this.saveCurrentUser(result.user);
                 if (remember) localStorage.setItem(STORAGE_KEY_REMEMBER, 'true');
@@ -1915,6 +1933,7 @@ const Auth = {
                     body: JSON.stringify({ username, password })
                 });
                 resetLoginAttempts(username);
+                localStorage.removeItem(STORAGE_KEY_ADMIN_TOKEN);
                 localStorage.setItem(STORAGE_KEY_USER_TOKEN, result.token);
                 this.saveCurrentUser(result.user);
                 if (remember) localStorage.setItem(STORAGE_KEY_REMEMBER, 'true');
@@ -1944,6 +1963,7 @@ const Auth = {
     },
     
     logout() {
+        clearTimeout(userSyncTimer);
         this.saveCurrentUser(null);
         localStorage.removeItem(STORAGE_KEY_REMEMBER);
         localStorage.removeItem(STORAGE_KEY_ADMIN_TOKEN);
@@ -2933,7 +2953,7 @@ function buyNow(fileId) {
 //  DEPOSIT - QR
 // ============================================================
 function generateQR(amount, method) {
-    const config = APP.bankConfig[method];
+    const config = getBankConfig()[method] || DEFAULT_BANK_CONFIG[method];
     if (!config) return null;
     const user = Auth.getCurrentUser();
     const username = user ? user.username : 'USER';
@@ -2942,8 +2962,13 @@ function generateQR(amount, method) {
     const accountName = config.accountName;
     let qrUrl = config.qrImage;
     if (!qrUrl) {
-        const bankId = config.bankId || (method === 'Momo' ? 'MOMO' : '970422');
-        qrUrl = `https://api.vietqr.io/image/${bankId}-${account}-${accountName}.jpg?amount=${amount}&addInfo=${encodeURIComponent(content)}&accountName=${encodeURIComponent(accountName)}`;
+        if (method === 'Momo') {
+            const paymentText = `MOMO ${account} ${amount} ${content}`;
+            qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(paymentText)}`;
+        } else {
+            const bankId = config.bankId || '970422';
+            qrUrl = `https://api.vietqr.io/image/${bankId}-${account}-compact2.jpg?amount=${amount}&addInfo=${encodeURIComponent(content)}&accountName=${encodeURIComponent(accountName)}`;
+        }
     }
     return { qrUrl, content, account, bankName: config.name, amount };
 }
@@ -2966,11 +2991,11 @@ function handleDepositSubmit(e) {
     if (!amount || amount < 10000) { showToast('Số tiền tối thiểu 10.000đ!', 'fas fa-triangle-exclamation', 'error'); return; }
     if (amount > APP.maxDeposit) { showToast(`Số tiền vượt quá giới hạn ${APP.maxDeposit.toLocaleString()}đ!`, 'fas fa-triangle-exclamation', 'error'); return; }
     const user = Auth.getCurrentUser();
+    const qrData = generateQR(amount, method);
+    if (!qrData) { showToast('Lỗi tạo QR!', 'fas fa-triangle-exclamation', 'error'); return; }
     const request = Auth.createDepositRequest(user.id, amount, method);
     if (!request) { showToast('Lỗi tạo yêu cầu!', 'fas fa-triangle-exclamation', 'error'); return; }
     APP.pendingDeposit = request;
-    const qrData = generateQR(amount, method);
-    if (!qrData) { showToast('Lỗi tạo QR!', 'fas fa-triangle-exclamation', 'error'); return; }
     document.getElementById('depositForm').style.display = 'none';
     document.getElementById('qrPaymentSection').style.display = 'block';
     DOM.displayQrAmount.textContent = amount.toLocaleString();
