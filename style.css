@@ -255,12 +255,14 @@ body {
     pointer-events: auto !important;
     cursor: pointer !important;
     opacity: 1 !important;
-    width: 24px !important;
-    height: 24px !important;
+    appearance: auto !important;
+    -webkit-appearance: checkbox !important;
+    width: 18px !important;
+    height: 18px !important;
     z-index: 99999 !important;
-    position: absolute !important;
-    left: -4px !important;
-    top: -4px !important;
+    position: static !important;
+    flex: 0 0 18px !important;
+    margin: 0 !important;
 }
 
 #customCheckbox {
@@ -3494,6 +3496,24 @@ header.scrolled {
 }
 .form-options a:hover {
     text-decoration: underline;
+}
+
+.terms-option {
+    justify-content: flex-start;
+    align-items: center;
+}
+
+.terms-label {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    line-height: 1.45;
+}
+
+.terms-label input[type="checkbox"] {
+    flex: 0 0 auto;
+    margin: 0;
+    accent-color: var(--primary);
 }
 
 .form-footer {

@@ -1911,33 +1911,6 @@ const Auth = {
                 DB.set('users', 'all', users);
                 return result;
             } catch (error) {
-                if (error.message?.includes('Backend HTTP 404')) {
-                    console.warn('[AUTH] Backend chưa hỗ trợ đăng ký, chuyển sang lưu local.');
-                    const users = this.getUsers();
-                    if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
-                        return { success: false, message: 'Tên đăng nhập đã tồn tại!' };
-                    }
-                    if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
-                        return { success: false, message: 'Email đã được sử dụng!' };
-                    }
-                    users.push({
-                        id: 'user_' + Date.now().toString(36),
-                        username,
-                        email,
-                        password,
-                        role: 'user',
-                        balance: 0,
-                        totalDeposit: 0,
-                        vipLevel: 0,
-                        vipPoints: 0,
-                        history: [],
-                        depositRequests: [],
-                        purchasedFiles: [],
-                        joinDate: new Date().toISOString()
-                    });
-                    this.saveUsers(users);
-                    return { success: true, message: 'Đăng ký thành công!', user: users[users.length - 1] };
-                }
                 return { success: false, message: error.message || 'Không thể đăng ký với server.' };
             }
         }
