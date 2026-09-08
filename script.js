@@ -944,14 +944,27 @@ function getAdminToken() {
 
 async function backendRequest(path, options = {}) {
     if (!SYNC_SERVER_URL) throw new Error('Backend sync chưa khả dụng khi mở bằng file://');
-    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const headers = { ...(options.headers || {}) };
+    if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
     const token = getAdminToken();
     if (token) headers.Authorization = `Bearer ${token}`;
-    let response;
-    try {
-        response = await fetch(`${SYNC_SERVER_URL}${path}`, { ...options, headers });
-    } catch (error) {
-        console.error('[SYNC SERVER] Không thể kết nối backend:', error);
+    let response = null;
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000);
+        try {
+            response = await fetch(`${SYNC_SERVER_URL}${path}`, { ...options, headers, signal: controller.signal });
+            clearTimeout(timeout);
+            break;
+        } catch (error) {
+            clearTimeout(timeout);
+            lastError = error;
+            if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+        }
+    }
+    if (!response) {
+        console.error('[SYNC SERVER] Không thể kết nối backend:', lastError);
         throw new Error('Không thể kết nối máy chủ. Vui lòng kiểm tra backend hoặc thử lại sau.');
     }
     const result = await response.json().catch(() => ({}));
@@ -983,6 +996,7 @@ function buildFullSyncState() {
 
 let backendRevision = 0;
 let backendSyncInFlight = false;
+let backendPullInFlight = false;
 let backendSyncQueued = false;
 
 async function pushBackendState() {
@@ -1013,7 +1027,8 @@ async function pushBackendState() {
 }
 
 async function pullBackendState() {
-    if (!SYNC_SERVER_URL || backendSyncInFlight) return;
+    if (!SYNC_SERVER_URL || backendSyncInFlight || backendPullInFlight) return;
+    backendPullInFlight = true;
     try {
         const result = await backendRequest(`/api/sync/state?revision=${backendRevision}`);
         if (!result.changed || !result.data || result.revision <= backendRevision) return;
@@ -1021,6 +1036,8 @@ async function pullBackendState() {
         handleSyncMessage({ ...result, timestamp: Date.now() });
     } catch (error) {
         updateSyncStatus('Mất kết nối server đồng bộ', false);
+    } finally {
+        backendPullInFlight = false;
     }
 }
 
@@ -1869,6 +1886,21 @@ const Auth = {
             } catch (error) {
                 recordFailedLogin(username);
                 return { success: false, message: error.message || 'Không thể xác thực admin với server.' };
+            }
+        }
+        if (SYNC_SERVER_URL) {
+            try {
+                const result = await backendRequest('/api/auth/user-login', {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password })
+                });
+                resetLoginAttempts(username);
+                this.saveCurrentUser(result.user);
+                if (remember) localStorage.setItem(STORAGE_KEY_REMEMBER, 'true');
+                return { success: true, message: 'Đăng nhập thành công!', user: result.user };
+            } catch (error) {
+                recordFailedLogin(username);
+                return { success: false, message: error.message || 'Không thể xác thực tài khoản với server.' };
             }
         }
         const users = this.getUsers();

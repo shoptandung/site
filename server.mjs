@@ -157,6 +157,12 @@ function createAdminSession() {
     return token;
 }
 
+function createUserSession(userId) {
+    const token = crypto.randomBytes(32).toString('hex');
+    sessions.set(token, { role: 'user', userId, expiresAt: Date.now() + 8 * 60 * 60 * 1000 });
+    return token;
+}
+
 function passwordsMatch(received, expected) {
     const receivedBuffer = Buffer.from(String(received || ''));
     const expectedBuffer = Buffer.from(String(expected || ''));
@@ -241,6 +247,23 @@ const requestHandler = async (req, res) => {
                 token: createAdminSession(),
                 user: { id: 'admin_001', username: 'admin', email: 'admin@shop.com', role: 'admin', balance: 0, totalDeposit: 0, vipLevel: 0, vipPoints: 0, history: [], depositRequests: [], reviews: [], spinHistory: [], purchasedFiles: [], locked: false }
             });
+        }
+
+        if (url.pathname === '/api/auth/user-login' && req.method === 'POST') {
+            const ip = req.socket.remoteAddress || 'unknown';
+            if (isLoginBlocked(ip)) return json(res, 429, { success: false, message: 'Quá nhiều lần đăng nhập. Thử lại sau 15 phút.' });
+            const body = await readBody(req);
+            const username = String(body.username || '').trim().toLowerCase();
+            const users = Array.isArray(state.users) ? state.users : [];
+            const user = users.find(item => String(item.username || '').toLowerCase() === username);
+            if (!user || !passwordsMatch(body.password, user.password)) {
+                recordLoginFailure(ip);
+                return json(res, 401, { success: false, message: 'Sai tên đăng nhập hoặc mật khẩu!' });
+            }
+            if (user.locked) return json(res, 403, { success: false, message: 'Tài khoản của bạn đã bị khóa! Vui lòng liên hệ admin.' });
+            clearLoginFailures(ip);
+            const { password: _, ...publicUser } = user;
+            return json(res, 200, { success: true, token: createUserSession(user.id), user: publicUser });
         }
 
         if (url.pathname === '/api/auth/register' && req.method === 'POST') {
