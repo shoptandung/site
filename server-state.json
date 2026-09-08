@@ -1,0 +1,17 @@
+{
+  "revision": 1,
+  "state": {
+    "files": [],
+    "users": [],
+    "giftcodes": [],
+    "events": [],
+    "spinWeights": [],
+    "bankConfig": {},
+    "supportLinks": {},
+    "maxDeposit": 1000000,
+    "maintenance": false,
+    "cart": [],
+    "depositRequests": [],
+    "processedDeposits": []
+  }
+}

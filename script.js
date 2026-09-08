@@ -998,6 +998,7 @@ let backendRevision = 0;
 let backendSyncInFlight = false;
 let backendPullInFlight = false;
 let backendSyncQueued = false;
+let backendPullFailures = 0;
 
 async function pushBackendState() {
     if (!APP.isAdmin || !getAdminToken()) return false;
@@ -1031,11 +1032,14 @@ async function pullBackendState() {
     backendPullInFlight = true;
     try {
         const result = await backendRequest(`/api/sync/state?revision=${backendRevision}`);
+        backendPullFailures = 0;
+        updateSyncStatus('Đã kết nối đồng bộ', true);
         if (!result.changed || !result.data || result.revision <= backendRevision) return;
         backendRevision = result.revision;
         handleSyncMessage({ ...result, timestamp: Date.now() });
     } catch (error) {
-        updateSyncStatus('Mất kết nối server đồng bộ', false);
+        backendPullFailures += 1;
+        updateSyncStatus(backendPullFailures >= 3 ? 'Đang chờ máy chủ đồng bộ' : 'Đang kết nối đồng bộ', false);
     } finally {
         backendPullInFlight = false;
     }
