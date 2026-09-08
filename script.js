@@ -340,7 +340,7 @@ function getAdminBroadcasts() {
 const configuredSyncServerUrl = String(window.SYNC_SERVER_URL || '').trim().replace(/\/$/, '');
 const SYNC_SERVER_URL = configuredSyncServerUrl || (
     window.location.protocol === 'http:' || window.location.protocol === 'https:'
-        ? window.location.origin
+        ? 'https://site-1-7ohy.onrender.com'
         : ''
 );
 
